@@ -1,0 +1,126 @@
+{
+    "RR": {
+        "lavaMD_5": {
+            "NUM_CYCLES": 5559148.0,
+            "NUM_INSTRS_RETIRED": 43920412.0,
+            "NUM_STALL_CYCLES": 15619.0,
+            "NUM_MEM_REQUESTS": 3847.0,
+            "NUM_MEM_RESPONSES": 3847.0,
+            "AVG_RESPONSE_LATENCY": 203.0,
+            "NUM_TTIMEDOUT_REQUESTS": 0.0,
+            "CACHE_NUM_ACCESSES": 626660.0,
+            "CACHE_NUM_HITS": 622813.0,
+            "CACHE_HIT_RATE_PERC": 99.39
+        },
+        "nn_256k": {
+            "NUM_CYCLES": 46345.0,
+            "NUM_INSTRS_RETIRED": 245760.0,
+            "NUM_STALL_CYCLES": 116401.0,
+            "NUM_MEM_REQUESTS": 6144.0,
+            "NUM_MEM_RESPONSES": 6144.0,
+            "AVG_RESPONSE_LATENCY": 203.0,
+            "NUM_TTIMEDOUT_REQUESTS": 0.0,
+            "CACHE_NUM_ACCESSES": 24576.0,
+            "CACHE_NUM_HITS": 18432.0,
+            "CACHE_HIT_RATE_PERC": 75.0
+        },
+        "backprop_8192": {
+            "NUM_CYCLES": 81452.0,
+            "NUM_INSTRS_RETIRED": 180247.0,
+            "NUM_STALL_CYCLES": 31476.0,
+            "NUM_MEM_REQUESTS": 3457.0,
+            "NUM_MEM_RESPONSES": 3457.0,
+            "AVG_RESPONSE_LATENCY": 204.0,
+            "NUM_TTIMEDOUT_REQUESTS": 0.0,
+            "CACHE_NUM_ACCESSES": 53255.0,
+            "CACHE_NUM_HITS": 49798.0,
+            "CACHE_HIT_RATE_PERC": 93.51
+        },
+        "crystal_q12": {
+            "NUM_CYCLES": 193947.0,
+            "NUM_INSTRS_RETIRED": 868352.0,
+            "NUM_STALL_CYCLES": 677821.0,
+            "NUM_MEM_REQUESTS": 16384.0,
+            "NUM_MEM_RESPONSES": 16384.0,
+            "AVG_RESPONSE_LATENCY": 203.0,
+            "NUM_TTIMEDOUT_REQUESTS": 0.0,
+            "CACHE_NUM_ACCESSES": 65536.0,
+            "CACHE_NUM_HITS": 49152.0,
+            "CACHE_HIT_RATE_PERC": 75.0
+        },
+        "hotspot_r512h2i2": {
+            "NUM_CYCLES": 461136.0,
+            "NUM_INSTRS_RETIRED": 3560236.0,
+            "NUM_STALL_CYCLES": 108412.0,
+            "NUM_MEM_REQUESTS": 6144.0,
+            "NUM_MEM_RESPONSES": 6144.0,
+            "AVG_RESPONSE_LATENCY": 203.0,
+            "NUM_TTIMEDOUT_REQUESTS": 0.0,
+            "CACHE_NUM_ACCESSES": 632280.0,
+            "CACHE_NUM_HITS": 626136.0,
+            "CACHE_HIT_RATE_PERC": 99.03
+        }
+    },
+    "GTO": {
+        "lavaMD_5": {
+            "NUM_CYCLES": 5562670.0,
+            "NUM_INSTRS_RETIRED": 43920412.0,
+            "NUM_STALL_CYCLES": 50545.0,
+            "NUM_MEM_REQUESTS": 3919.0,
+            "NUM_MEM_RESPONSES": 3919.0,
+            "AVG_RESPONSE_LATENCY": 203.0,
+            "NUM_TTIMEDOUT_REQUESTS": 0.0,
+            "CACHE_NUM_ACCESSES": 626660.0,
+            "CACHE_NUM_HITS": 622741.0,
+            "CACHE_HIT_RATE_PERC": 99.37
+        },
+        "nn_256k": {
+            "NUM_CYCLES": 43473.0,
+            "NUM_INSTRS_RETIRED": 245760.0,
+            "NUM_STALL_CYCLES": 92321.0,
+            "NUM_MEM_REQUESTS": 6144.0,
+            "NUM_MEM_RESPONSES": 6144.0,
+            "AVG_RESPONSE_LATENCY": 203.0,
+            "NUM_TTIMEDOUT_REQUESTS": 0.0,
+            "CACHE_NUM_ACCESSES": 24576.0,
+            "CACHE_NUM_HITS": 18432.0,
+            "CACHE_HIT_RATE_PERC": 75.0
+        },
+        "backprop_8192": {
+            "NUM_CYCLES": 79040.0,
+            "NUM_INSTRS_RETIRED": 180247.0,
+            "NUM_STALL_CYCLES": 12726.0,
+            "NUM_MEM_REQUESTS": 3457.0,
+            "NUM_MEM_RESPONSES": 3457.0,
+            "AVG_RESPONSE_LATENCY": 203.0,
+            "NUM_TTIMEDOUT_REQUESTS": 0.0,
+            "CACHE_NUM_ACCESSES": 53255.0,
+            "CACHE_NUM_HITS": 49798.0,
+            "CACHE_HIT_RATE_PERC": 93.51
+        },
+        "crystal_q12": {
+            "NUM_CYCLES": 160392.0,
+            "NUM_INSTRS_RETIRED": 868352.0,
+            "NUM_STALL_CYCLES": 410652.0,
+            "NUM_MEM_REQUESTS": 16384.0,
+            "NUM_MEM_RESPONSES": 16384.0,
+            "AVG_RESPONSE_LATENCY": 203.0,
+            "NUM_TTIMEDOUT_REQUESTS": 0.0,
+            "CACHE_NUM_ACCESSES": 65536.0,
+            "CACHE_NUM_HITS": 49152.0,
+            "CACHE_HIT_RATE_PERC": 75.0
+        },
+        "hotspot_r512h2i2": {
+            "NUM_CYCLES": 456876.0,
+            "NUM_INSTRS_RETIRED": 3560236.0,
+            "NUM_STALL_CYCLES": 73983.0,
+            "NUM_MEM_REQUESTS": 6144.0,
+            "NUM_MEM_RESPONSES": 6144.0,
+            "AVG_RESPONSE_LATENCY": 203.0,
+            "NUM_TTIMEDOUT_REQUESTS": 0.0,
+            "CACHE_NUM_ACCESSES": 632280.0,
+            "CACHE_NUM_HITS": 626136.0,
+            "CACHE_HIT_RATE_PERC": 99.03
+        }
+    }
+}
