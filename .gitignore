@@ -1,0 +1,18 @@
+.vscode/
+build/
+log/
+
+__pycache__/
+
+# Ignore macsim executable, not src/macsim
+macsim
+!macsim/
+
+# Ignore venv
+.python3/
+
+# Ignore local trace directory
+macsim_traces/
+
+*.tar*
+*.zip
