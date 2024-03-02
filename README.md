@@ -137,6 +137,8 @@ The following figure shows the overall simulation flow of Macsim.
   - Traces are located at `/storage/ice-shared/cs8803o21/macsim_traces`. The simulator will automatically pick them up.
 - **Using your own machine**:
   - Traces will be automatically downloaded to the local `macsim_traces` directory.
+  - Macsim needs zlib to uncompress trace files. zlib and correspoding headers can be installed using `$ sudo apt install zlib1g zlib1g-dev`.
+
 
 > Note: Traces are ~150MB in size and may take a couple of minutes to download and uncompress.
 
