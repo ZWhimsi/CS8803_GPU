@@ -20,12 +20,12 @@ setup_python3_venv(){
         # Create a virtual environment
         echo "> Creating Python virtual environment '$VENV_NAME'..."
         python3 -m venv "$VENV_NAME"
-
-        # Install any necessary dependencies here using pip if needed
-        $VENV_NAME/bin/pip install --upgrade pip
-        $VENV_NAME/bin/pip install numpy matplotlib
-        echo "> Python virtual environment '$VENV_NAME' created."
     fi
+
+    # Install any necessary dependencies here using pip if needed
+    $VENV_NAME/bin/pip install --upgrade pip
+    $VENV_NAME/bin/pip install numpy matplotlib gdown
+    echo "> Python virtual environment '$VENV_NAME' created."
 
     # Activate the virtual environment
     source "$VENV_NAME/bin/activate"
