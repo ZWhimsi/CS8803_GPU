@@ -50,10 +50,10 @@ public:
   // Get number of stalled cycles
   sim_time_type get_stall_cycles();
 
-  // Get number of warps currently active
+  // Get number of warps currently on the core (running/active/suspended)
   int get_running_warp_num();
 
-  // Get maximum number of warps that can run simultaneously on a core
+  // Get maximum number of warps that the core can hold
   int get_max_running_warp_num();
 
   // Run one cycle
@@ -61,6 +61,8 @@ public:
 
 
 private:
+  friend class macsim;
+
   int core_id = -1;             // Core ID
   macsim* gpusim;               // Pointer to Macsim instance
   cache_c* c_l2cache;           // Pointer to L2 $
@@ -72,6 +74,8 @@ private:
   int l1cache_assoc;
   int l1cache_line_size; 
   int l1cache_banks;
+
+  uint64_t num_vta_hits=0;                // Counter to keep track of VTA hits
 
   bool c_retire = false;                  // Has the core retired?
   sim_time_type c_cycle = 0;              // Number of cycles elapsed
@@ -95,7 +99,7 @@ private:
   bool schedule_warps_ccws();
 
   // Send a memory request
-  bool send_mem_req(trace_info_nvbit_small_s* trace_info, bool enable_cache);
+  bool send_mem_req(int wid, trace_info_nvbit_small_s* trace_info, bool enable_cache);
 };
 
 #endif

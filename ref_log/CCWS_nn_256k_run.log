@@ -1,10 +1,10 @@
 Reading GPU Configurations...Block Scheduling Policy: ROUND_ROBIN
-Warp Scheduling Policy: ROUND_ROBIN
+Warp Scheduling Policy: CCWS
 trace type : nvbit
 > trace_path: /fast_data/echung67/trace/nvbit/nn/256k/Kernel0/trace.txt truncate_size: 0
  trace type : nvbit
 # of blocks: 1024, # of warps: 8192, # of Instrs: 245760
-Macsim started @ Wed Mar 13 20:36:15 2024
+Macsim started @ Wed Mar 13 20:36:46 2024
 
 **************************************************
 ========== starting kernel 0 ==========
@@ -88,7 +88,7 @@ Core: 7
 	CORE7_TOT_INSTR    : 116043
 GPU Retired.
 **************************************************
-Simulation finished @ Wed Mar 13 20:36:16 2024
+Simulation finished @ Wed Mar 13 20:36:47 2024
 
 Total simulation time: 0:0:1
 

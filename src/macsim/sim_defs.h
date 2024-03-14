@@ -30,4 +30,21 @@ typedef std::string sim_object_id_type;
 #define MA_DEBUG2(M) std::cout<<M<<std::endl;
 #define SIM_TIME_TO_MICROSECONDS_COEFF 1000
 #define SIM_TIME_TO_SECONDS_COEFF 1000000000
+
+// Uncomment to the following to enable logging of warp scheduling activity
+// #define LOG_WARP_SCHEDULING
+// #define LOG_CCWS_WARP_SCHEDULING
+
+#ifdef LOG_WARP_SCHEDULING
+  #define WSLOG(x) x
+#else
+  #define WSLOG(x)
+#endif
+
+#ifdef LOG_CCWS_WARP_SCHEDULING
+  #define CCWSLOG(x) x
+#else
+  #define CCWSLOG(x)
+#endif
+
 #endif // !DEFINITIONS_H

@@ -10,6 +10,9 @@
 
 using namespace std;
 
+class cache_c;
+class ccws_vta;
+
 typedef struct kernel_info_s {
   int n_of_warp;
   int n_warp_per_block = 0;
@@ -27,6 +30,12 @@ typedef struct warp_s {
   std::queue <trace_info_nvbit_small_s *> trace_buffer;   // Trace buffer
 
   // TODO: We need to have a per-warp timestamp marker
+
+  // VTA entry for warp
+  ccws_vta * ccws_vta_entry;
+
+  // LLS score for warp
+  int ccws_lls_score=0;
   
   bool m_file_opened;
   bool m_trace_ended;

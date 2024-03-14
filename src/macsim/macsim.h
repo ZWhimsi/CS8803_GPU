@@ -16,8 +16,17 @@
 
 using namespace std;
 
+#define CCWS_LLS_BASE_SCORE 100
+#define CCWS_LLS_K_THROTTLE 64
+#define CCWS_VTA_ASSOC 8
+
 class core_c;
 class GPU_Parameter_Set;
+class cache_c;
+
+typedef struct cache_data_t {
+  bool m_dirty;           /**< line dirty */
+} cache_data_t;
 
 enum class Block_Scheduling_Policy_Types {
   ROUND_ROBIN = 0,
@@ -45,12 +54,15 @@ constexpr const char* Warp_Scheduling_Policy_Types_str[] = {
 };
 
 struct GPU_scoreboard_entry {
+  Addr addr;
   uint64_t PC;
   sim_time_type req_time = 0;
   bool is_mem;
   int core_id;
   int warp_id;
-  int mem_queue_id = -1;
+  uint64_t mem_queue_id = -1;
+  bool insert_in_l1 = false;  // insert block in l1 also when response returns
+  bool mark_dirty = false;    // mark as dirty in L2 when response returns 
 };
 
 class macsim {
@@ -83,7 +95,7 @@ public:
   void trace_reader_setup();
   
   // Generates memory request for lower level memory model if there is a L2 miss
-  void inst_event(trace_info_nvbit_small_s* trace_info, int core_id, int block_id, int warp_id, sim_time_type c_cycle);
+  void inst_event(trace_info_nvbit_small_s* trace_info, int core_id, int block_id, int warp_id, sim_time_type c_cycle, bool on_response_insert_in_l1=false, bool on_response_mark_dirty=false);
   
   // Get memory response from memory and 
   void get_mem_response();
@@ -106,8 +118,9 @@ public:
    * Dispatch warps to specified core
    * if (core_id == -1), dispatch to all cores (used for initialization)
    * warp_to_run == NULL if there is no more warp to schedule (schedule := put in the core's c_dispatched_warps queue)
+   * Returns number of total dispatched warps
   */
-  void dispatch_warps(int core_id, Block_Scheduling_Policy_Types policy);
+  int dispatch_warps(int core_id, Block_Scheduling_Policy_Types policy);
 
   warp_s* initialize_warp(int warp_id);
 
@@ -128,6 +141,9 @@ public:
 
   // Increment cache requests
   void inc_n_cache_req() { n_cache_req++; }
+  
+  // Increment num l1 hits
+  void inc_n_l1_hits()   { n_l1_hits++; }
 
 
   uint64_t global_memory_base_addr = 0;
@@ -140,6 +156,7 @@ public:
   int kernel_id = 0;
   vector<string> kernels_v;
   vector<core_c *> core_pointers_v;
+  cache_c* l2cache;
   pool_c<warp_trace_info_node_s> *trace_node_pool; /**<  trace node pool */
   pool_c<warp_s> *warp_pool;
   vector<kernel_info_s> kernel_info_v;
@@ -178,6 +195,7 @@ private:
   uint64_t n_responses;
   uint64_t n_timeout_req; // track number of GPU memory queue request that get a response timeout
   uint64_t n_cache_req;
+  uint64_t n_l1_hits;
 
   int n_blocks_total; 
   vector<int> n_blocks_per_kernel;

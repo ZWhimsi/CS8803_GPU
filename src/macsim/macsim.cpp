@@ -42,6 +42,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "cache.h"
 
 #include "ram.h"
+#include "ccws_vta.h"
 
 using namespace std;
 
@@ -67,6 +68,7 @@ macsim::macsim(GPU_Parameter_Set* gpu_params){
   n_responses = 0;
   total_latency = 0;
   n_cache_req = 0;
+  n_l1_hits=0;
   n_blocks_total = 0;
   n_correct_ppa_prediction = 0;
   n_total_ppa_prediction = 0;
@@ -84,6 +86,12 @@ macsim::macsim(GPU_Parameter_Set* gpu_params){
   l2cache_assoc = m_gpu_params->L2Cache_Assoc;
   l2cache_line_size = m_gpu_params->L2Cache_Line_Size;
   l2cache_banks = m_gpu_params->L2Cache_Banks;
+
+  for (int id=0; id<n_of_cores; id++){
+    c_cycle_total[id] = 0;
+    c_insts_total[id] = 0;
+    c_stall_cycles[id] = 0;
+  }
 
   cout << "Block Scheduling Policy: " << Block_Scheduling_Policy_Types_str[(int)block_scheduling_policy] << endl;
   cout << "Warp Scheduling Policy: " << Warp_Scheduling_Policy_Types_str[(int)warp_scheduling_policy] << endl;
@@ -132,7 +140,7 @@ void macsim::trace_reader_setup()
     ASSERTM(0, "error reading from file:%s", kernel_config_path.c_str());
   }
 
-  printf("trace tpye : %s\n",trace_type.c_str());
+  printf("trace type : %s\n",trace_type.c_str());
 
 
   if (kernel_count == -1) {
@@ -259,7 +267,7 @@ void macsim::trace_reader_setup()
 }
 
 void macsim::inst_event(trace_info_nvbit_small_s* trace_info, int core_id, 
-                        int block_id, int warp_id, sim_time_type c_cycle) {
+                        int block_id, int warp_id, sim_time_type c_cycle, bool on_response_insert_in_l1, bool on_response_mark_dirty) {
   // Increment counters in core
   if (is_ld(trace_info->m_opcode))
     core_pointers_v[core_id]->ld_req_cnt++;
@@ -268,18 +276,21 @@ void macsim::inst_event(trace_info_nvbit_small_s* trace_info, int core_id,
 
   // add request to scoreboard
   GPU_scoreboard_entry sb_entry;
+  sb_entry.addr = trace_info->m_mem_addr;
   sb_entry.PC = trace_info->m_inst_addr;
   sb_entry.req_time = m_cycle;
   sb_entry.is_mem = true;
   sb_entry.core_id = core_id;
   sb_entry.warp_id = warp_id;
   sb_entry.mem_queue_id = n_requests;
+  sb_entry.insert_in_l1 = on_response_insert_in_l1;
+  sb_entry.mark_dirty = on_response_mark_dirty;
   GPU_scoreboard.push_back(sb_entry);
 
   // Generate memory request
   RAM_request ram_req = {
     .addr = trace_info->m_mem_addr,
-    .is_store = trace_info->m_is_load,
+    .is_store = !trace_info->m_is_load,
     .access_sz = trace_info->m_mem_access_size,
     .req_time = m_cycle,
     .core_id = core_id,
@@ -293,19 +304,74 @@ void macsim::inst_event(trace_info_nvbit_small_s* trace_info, int core_id,
 
 void macsim::get_mem_response() {
   // check mem response and update entries
-  while (gpu_mem_response_queue->size() != 0){
+  while (gpu_mem_response_queue->size() != 0) {
+
+    // Pop one response from the response queue
     auto response = gpu_mem_response_queue->front();
     gpu_mem_response_queue->pop();
 
     // track average request response time
     n_responses++;
-    int mem_response_id = response.request_id;
-    // MA_DEBUG("clearing scoreboard entry ID=" << mem_response_id);
+    uint64_t mem_response_id = response.request_id;
     sim_time_type req_time=0, resp_time=0;
+
+    // Find GPU scoreboard entry corresponding to the response
     for (auto entry = GPU_scoreboard.begin(); entry != GPU_scoreboard.end(); entry++) {
       if (entry->mem_queue_id == mem_response_id) {
         req_time = entry->req_time; //entry.req_time + delay;
         resp_time = m_cycle - req_time;
+
+        // Delegated insert in L2 cache
+        Addr line_addr, victim_line_addr;
+        cache_data_t* l2_ins_ln = (cache_data_t*) l2cache->insert_cache(entry->addr, &line_addr, &victim_line_addr, 0, false);
+
+        // writeback replaced line if it was valid and dirty
+        if(victim_line_addr && l2_ins_ln->m_dirty) {
+          // Generate memory request for writeback
+          RAM_request ram_req = {
+            .addr = victim_line_addr,
+            .is_store = true,
+            .access_sz = l2cache_line_size,
+            .req_time = m_cycle,
+            .core_id = -1,
+            .warp_id = -1,
+            .request_id = n_requests
+          };
+          n_requests++;
+          gpu_mem_request_queue->push(ram_req);
+        }
+
+        // Delegated mark dirty in l2
+        l2_ins_ln->m_dirty = entry->mark_dirty;
+
+        // Delegated insert in L1
+        if(entry->insert_in_l1) {
+          // Insert in L1
+          core_pointers_v[entry->core_id]->c_l1cache->insert_cache(entry->addr, &line_addr, &victim_line_addr, 0, false);
+
+          //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+          // TODO: Task 2.1b: Insert the tag in warp's VTA entry upon L1 eviction.
+          // Steps:
+          //  - Get tag corresponding to the address. (see if any of the cache class methods can help with this)
+          //  - Search for the warp that issued the request in core's (entry->core_id) suspended queue and Insert 
+          //    the tag in warp's VTA entry
+          if(victim_line_addr) {
+            // Get the tag from the address
+            Addr repl_ln_tag; 
+
+            // Get the warp pointer from suspended queue of core (use core_id from entry->core_id)
+
+            // Insert the tag into the warp's VTA
+            CCWSLOG(printf("VTA insertion: %llx\n", repl_ln_tag));
+
+          }
+          //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        }
+
+        // Finally insert response in core responses queue
+        core_pointers_v[response.core_id]->c_memory_responses.push(response.warp_id);
+        
+        // erase scoreboard entry
         GPU_scoreboard.erase(entry);
         break;
       }
@@ -315,7 +381,6 @@ void macsim::get_mem_response() {
     if (mem_response_id % 1000 == 0) 
       MA_DEBUG2("RAM resp id:" << response.request_id << " m_cycle=" << m_cycle << " req_time=" 
       << req_time << " resp_time=" << resp_time << " total_latency=" << total_latency);
-      core_pointers_v[response.core_id]->c_memory_responses.push(response.warp_id);
   }
 }
 
@@ -389,8 +454,8 @@ void macsim::start_kernel(){
   cout << "========== starting kernel " << kernel_id << " ==========" << endl;
 
   // Setup L2 Cache (the size will be the twice of the l1 cache's total size)
-  cache_c* l2cache = new cache_c("dcache", l2cache_size, l2cache_assoc, l2cache_line_size,
-                                  sizeof(uint64_t), l2cache_banks, false, -1, CACHE_DL2, false, 1, 0, this);
+  l2cache = new cache_c("dcache", l2cache_size, l2cache_assoc, l2cache_line_size,
+                                  sizeof(cache_data_t), l2cache_banks, false, -1, CACHE_DL2, false, 1, 0, this);
 
   // Setup Cores
   for (int core_id = 0; core_id < n_of_cores; core_id++) {
@@ -428,13 +493,14 @@ void macsim::end_kernel(){
   // Retire cores
   for (int core_id = 0; core_id < n_of_cores; core_id++) {
     core_c* core = core_pointers_v[core_id];
-    c_cycle_total[core_id] = core->get_cycle();
-    c_insts_total[core_id] = core->get_insts();
-    c_stall_cycles[core_id] = core->get_stall_cycles();
+    c_cycle_total[core_id] = core->get_cycle();  // Initialialized in start_kernel
+    c_insts_total[core_id] += core->get_insts();
+    c_stall_cycles[core_id] += core->get_stall_cycles();
     mem_req_v.push_back(make_pair(core->ld_req_cnt, core->st_req_cnt));
     delete core;
   }
   core_pointers_v.clear();
+  delete l2cache;
 
   cout << "========== kernel " << kernel_id << " summary ==========" << endl;
   for (int core_id = 0; core_id < n_of_cores; core_id++){
@@ -495,37 +561,41 @@ void macsim::insert_block(warp_trace_info_node_s *node){
   (*m_block_queue)[block_id]->push_back(node);
 }
 
-void macsim::dispatch_warps(int core_id, Block_Scheduling_Policy_Types policy){
+int macsim::dispatch_warps(int core_id, Block_Scheduling_Policy_Types policy){
+  int ndispatched_warps=0;
   for(int core_id_ = 0; core_id_ < n_of_cores; core_id_++){
     if (core_id != -1 && core_id_ != core_id) continue; 
     warp_trace_info_node_s* warp_to_run;
     core_c* core = core_pointers_v[core_id_];
 
-    // find a new thread
-    int block_id = schedule_blocks(core_id_, policy); // if return -1, no new block is assigned
+    while(core->get_running_warp_num() < core->get_max_running_warp_num()){
+      // Schedule Block
+      int block_id = schedule_blocks(core_id_, policy); // if return -1, no new block is assigned
 
-    // send all warps in a block
-    warp_to_run = fetch_warp_from_block(block_id);
+      // Pick a warp from block
+      warp_to_run = fetch_warp_from_block(block_id);
+      if(!warp_to_run)
+        break;  // No warps to schedule
 
-    // assign as much as warps to the core
-    while (warp_to_run != NULL){
+      // Initialize warp
       warp_to_run->trace_info_ptr = initialize_warp(warp_to_run->warp_id);
       m_block_schedule_info[block_id]->dispatched_thread_num++;
       
-      // TODO: We need to update our timestamp when we dispatch the warp     
+      // TODO: We need to update our timestamp when we dispatch the warp
 
+      // We need to initialize VTA entry for the warp (associativity for VTA is defined in macsim.h)
+      warp_to_run->trace_info_ptr->ccws_vta_entry = new ccws_vta(CCWS_VTA_ASSOC);
+      
+      // Assign them a base score (defined in macsim.h)
+      warp_to_run->trace_info_ptr->ccws_lls_score = CCWS_LLS_BASE_SCORE;
+            
+      // Dispatch the warp to the core
       core->c_dispatched_warps.push_back(warp_to_run->trace_info_ptr);
-
-      if (core->get_running_warp_num() >= core->get_max_running_warp_num())
-        break;
-
-      // find a new thread
-      block_id = schedule_blocks(core_id_, policy); // if return -1, no new block is assigned
-      if(block_id!=-1 && find(m_block_schedule_order.begin(), m_block_schedule_order.end(), block_id) == m_block_schedule_order.end())
-        m_block_schedule_order.push_back(block_id);
-      warp_to_run = fetch_warp_from_block(block_id); 
+      ndispatched_warps++;
     }
-  }
+  } 
+
+  return ndispatched_warps;
 }
 
 warp_s* macsim::initialize_warp(int warp_id){
@@ -675,12 +745,18 @@ void macsim::print_stats() {
   printf("\tNUM_MEM_RESPONSES       : %lu\n", n_responses);
   printf("\tAVG_RESPONSE_LATENCY    : %lu\n", total_latency/n_responses);
   printf("\tNUM_TTIMEDOUT_REQUESTS  : %lu\n", n_timeout_req);
-
+  
+  float ipc = (float)n_total_instrs_retired/(float)m_cycle;
+  printf("\tINSTR_PER_CYCLE         : %lf\n", ipc);
+  
   printf("Cache:\n");
   if (m_gpu_params->Enable_GPU_Cache) {
-    printf("\tCACHE_NUM_ACCESSES  : %lu\n", n_cache_req);
-    printf("\tCACHE_NUM_HITS      : %lu\n", n_cache_req - n_requests);    // number of cache requests - number of memory requests
-    printf("\tCACHE_HIT_RATE_PERC : %.2f\n", 100.0 - ((float)n_requests*100.0/(float)n_cache_req));  // hit_rate = 100 - miss rate
+    printf("\tCACHE_NUM_ACCESSES    : %lu\n", n_cache_req);
+    printf("\tCACHE_NUM_HITS        : %lu\n", n_l1_hits);
+    printf("\tCACHE_HIT_RATE_PERC   : %.2f\n", ((float)n_l1_hits*100.0) / (float)n_cache_req); // hit rate = n_hits * 100 / total cache accesses
+    
+    float mpki = (float)(n_cache_req - n_l1_hits) * 1000.0 / (float)n_total_instrs_retired;
+    printf("\tMISSES_PER_1000_INSTR : %.2f\n", mpki);
   }
   else { 
       PRINT_MESSAGE("GPU cache disabled");

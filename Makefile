@@ -78,6 +78,7 @@ run_task2: traces							#t# Run simulator for task-2
 .PHONY: plot
 plot:										#t# Plot stats
 	python3 scripts/plot.py -t $(TRACE_DIR) -l $(LOG_DIR) $(LOG_DIR)/results.json NUM_STALL_CYCLES
+	python3 scripts/plot.py -t $(TRACE_DIR) -l $(LOG_DIR) $(LOG_DIR)/results.json MISSES_PER_1000_INSTR
 
 
 .PHONY: submit

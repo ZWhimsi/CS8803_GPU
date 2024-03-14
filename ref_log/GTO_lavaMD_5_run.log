@@ -1,149 +1,152 @@
 Reading GPU Configurations...Block Scheduling Policy: ROUND_ROBIN
 Warp Scheduling Policy: GTO
-trace tpye : nvbit
+trace type : nvbit
 > trace_path: /fast_data/echung67/trace/nvbit/lavaMD/5/Kernel0/trace.txt truncate_size: 0
  trace type : nvbit
 # of blocks: 125, # of warps: 500, # of Instrs: 43276498
-Macsim started @ Tue Feb 27 01:23:27 2024
+Macsim started @ Wed Mar 13 20:36:20 2024
 
 **************************************************
 ========== starting kernel 0 ==========
 n_blocks_per_kernel[kernel_id]: 125 m_gpu_params->Block_Stride: 1 n_of_cores: 8
 RAM resp id:0 m_cycle=213 req_time=10 resp_time=203 total_latency=203
-[Cycle: 100000]: mem_requests: 190, mem_responses: 190, avg_latency: 203
-[Cycle: 200000]: mem_requests: 278, mem_responses: 278, avg_latency: 203
-[Cycle: 300000]: mem_requests: 342, mem_responses: 342, avg_latency: 203
-[Cycle: 400000]: mem_requests: 412, mem_responses: 412, avg_latency: 203
-[Cycle: 500000]: mem_requests: 467, mem_responses: 467, avg_latency: 203
-[Cycle: 600000]: mem_requests: 524, mem_responses: 524, avg_latency: 203
-[Cycle: 700000]: mem_requests: 576, mem_responses: 576, avg_latency: 203
-[Cycle: 800000]: mem_requests: 623, mem_responses: 623, avg_latency: 203
-[Cycle: 900000]: mem_requests: 736, mem_responses: 736, avg_latency: 203
-[Cycle: 1000000]: mem_requests: 849, mem_responses: 849, avg_latency: 203
-[Cycle: 1100000]: mem_requests: 921, mem_responses: 921, avg_latency: 203
-[Cycle: 1200000]: mem_requests: 971, mem_responses: 971, avg_latency: 203
-RAM resp id:1000 m_cycle=1206326 req_time=1206123 resp_time=203 total_latency=203320
-[Cycle: 1300000]: mem_requests: 1038, mem_responses: 1038, avg_latency: 203
-[Cycle: 1400000]: mem_requests: 1108, mem_responses: 1108, avg_latency: 203
-[Cycle: 1500000]: mem_requests: 1185, mem_responses: 1185, avg_latency: 203
-[Cycle: 1600000]: mem_requests: 1262, mem_responses: 1262, avg_latency: 203
-[Cycle: 1700000]: mem_requests: 1320, mem_responses: 1320, avg_latency: 203
-[Cycle: 1800000]: mem_requests: 1396, mem_responses: 1396, avg_latency: 203
-[Cycle: 1900000]: mem_requests: 1443, mem_responses: 1443, avg_latency: 203
-[Cycle: 2000000]: mem_requests: 1466, mem_responses: 1466, avg_latency: 203
-[Cycle: 2100000]: mem_requests: 1554, mem_responses: 1551, avg_latency: 203
-[Cycle: 2200000]: mem_requests: 1708, mem_responses: 1708, avg_latency: 203
-[Cycle: 2300000]: mem_requests: 1811, mem_responses: 1811, avg_latency: 203
-[Cycle: 2400000]: mem_requests: 1870, mem_responses: 1870, avg_latency: 203
-[Cycle: 2500000]: mem_requests: 1938, mem_responses: 1938, avg_latency: 203
-[Cycle: 2600000]: mem_requests: 1994, mem_responses: 1994, avg_latency: 203
-RAM resp id:2000 m_cycle=2610973 req_time=2610770 resp_time=203 total_latency=406320
-[Cycle: 2700000]: mem_requests: 2073, mem_responses: 2073, avg_latency: 203
-[Cycle: 2800000]: mem_requests: 2147, mem_responses: 2147, avg_latency: 203
-[Cycle: 2900000]: mem_requests: 2209, mem_responses: 2209, avg_latency: 203
-[Cycle: 3000000]: mem_requests: 2276, mem_responses: 2276, avg_latency: 203
-[Cycle: 3100000]: mem_requests: 2355, mem_responses: 2355, avg_latency: 203
-[Cycle: 3200000]: mem_requests: 2396, mem_responses: 2396, avg_latency: 203
-[Cycle: 3300000]: mem_requests: 2426, mem_responses: 2426, avg_latency: 203
-[Cycle: 3400000]: mem_requests: 2556, mem_responses: 2556, avg_latency: 203
-[Cycle: 3500000]: mem_requests: 2684, mem_responses: 2684, avg_latency: 203
-[Cycle: 3600000]: mem_requests: 2780, mem_responses: 2780, avg_latency: 203
-[Cycle: 3700000]: mem_requests: 2843, mem_responses: 2843, avg_latency: 203
-[Cycle: 3800000]: mem_requests: 2907, mem_responses: 2907, avg_latency: 203
-[Cycle: 3900000]: mem_requests: 2967, mem_responses: 2966, avg_latency: 203
-RAM resp id:3000 m_cycle=3944663 req_time=3944460 resp_time=203 total_latency=609320
-[Cycle: 4000000]: mem_requests: 3047, mem_responses: 3047, avg_latency: 203
-[Cycle: 4100000]: mem_requests: 3122, mem_responses: 3122, avg_latency: 203
-[Cycle: 4200000]: mem_requests: 3181, mem_responses: 3181, avg_latency: 203
-[Cycle: 4300000]: mem_requests: 3251, mem_responses: 3250, avg_latency: 203
-[Cycle: 4400000]: mem_requests: 3307, mem_responses: 3307, avg_latency: 203
-[Cycle: 4500000]: mem_requests: 3334, mem_responses: 3331, avg_latency: 203
-[Cycle: 4600000]: mem_requests: 3400, mem_responses: 3400, avg_latency: 203
-[Cycle: 4700000]: mem_requests: 3532, mem_responses: 3530, avg_latency: 203
-[Cycle: 4800000]: mem_requests: 3623, mem_responses: 3622, avg_latency: 203
-[Cycle: 4900000]: mem_requests: 3693, mem_responses: 3693, avg_latency: 203
-[Cycle: 5000000]: mem_requests: 3735, mem_responses: 3735, avg_latency: 203
-[Cycle: 5100000]: mem_requests: 3778, mem_responses: 3778, avg_latency: 203
-[Cycle: 5200000]: mem_requests: 3810, mem_responses: 3810, avg_latency: 203
-[Cycle: 5300000]: mem_requests: 3864, mem_responses: 3864, avg_latency: 203
-[Cycle: 5400000]: mem_requests: 3912, mem_responses: 3912, avg_latency: 203
+[Cycle: 100000]: mem_requests: 232, mem_responses: 232, avg_latency: 203
+[Cycle: 200000]: mem_requests: 324, mem_responses: 324, avg_latency: 203
+[Cycle: 300000]: mem_requests: 391, mem_responses: 391, avg_latency: 203
+[Cycle: 400000]: mem_requests: 472, mem_responses: 472, avg_latency: 202
+[Cycle: 500000]: mem_requests: 531, mem_responses: 531, avg_latency: 202
+[Cycle: 600000]: mem_requests: 599, mem_responses: 599, avg_latency: 198
+[Cycle: 700000]: mem_requests: 677, mem_responses: 677, avg_latency: 193
+[Cycle: 800000]: mem_requests: 739, mem_responses: 739, avg_latency: 190
+[Cycle: 900000]: mem_requests: 912, mem_responses: 912, avg_latency: 182
+RAM resp id:1000 m_cycle=962706 req_time=962503 resp_time=203 total_latency=181826
+[Cycle: 1000000]: mem_requests: 1047, mem_responses: 1047, avg_latency: 181
+[Cycle: 1100000]: mem_requests: 1136, mem_responses: 1136, avg_latency: 181
+[Cycle: 1200000]: mem_requests: 1196, mem_responses: 1196, avg_latency: 179
+[Cycle: 1300000]: mem_requests: 1278, mem_responses: 1278, avg_latency: 179
+[Cycle: 1400000]: mem_requests: 1380, mem_responses: 1380, avg_latency: 178
+[Cycle: 1500000]: mem_requests: 1466, mem_responses: 1466, avg_latency: 177
+[Cycle: 1600000]: mem_requests: 1558, mem_responses: 1558, avg_latency: 177
+[Cycle: 1700000]: mem_requests: 1640, mem_responses: 1640, avg_latency: 176
+[Cycle: 1800000]: mem_requests: 1755, mem_responses: 1755, avg_latency: 176
+[Cycle: 1900000]: mem_requests: 1799, mem_responses: 1799, avg_latency: 176
+[Cycle: 2000000]: mem_requests: 1829, mem_responses: 1829, avg_latency: 176
+[Cycle: 2100000]: mem_requests: 1939, mem_responses: 1939, avg_latency: 177
+RAM resp id:2000 m_cycle=2104208 req_time=2104005 resp_time=203 total_latency=353971
+[Cycle: 2200000]: mem_requests: 2152, mem_responses: 2152, avg_latency: 176
+[Cycle: 2300000]: mem_requests: 2262, mem_responses: 2262, avg_latency: 176
+[Cycle: 2400000]: mem_requests: 2340, mem_responses: 2340, avg_latency: 176
+[Cycle: 2500000]: mem_requests: 2434, mem_responses: 2434, avg_latency: 176
+[Cycle: 2600000]: mem_requests: 2508, mem_responses: 2508, avg_latency: 176
+[Cycle: 2700000]: mem_requests: 2592, mem_responses: 2592, avg_latency: 176
+[Cycle: 2800000]: mem_requests: 2688, mem_responses: 2688, avg_latency: 176
+[Cycle: 2900000]: mem_requests: 2763, mem_responses: 2763, avg_latency: 176
+[Cycle: 3000000]: mem_requests: 2837, mem_responses: 2837, avg_latency: 176
+[Cycle: 3100000]: mem_requests: 2929, mem_responses: 2929, avg_latency: 176
+[Cycle: 3200000]: mem_requests: 2977, mem_responses: 2977, avg_latency: 176
+RAM resp id:3000 m_cycle=3242292 req_time=3242089 resp_time=203 total_latency=528348
+[Cycle: 3300000]: mem_requests: 3030, mem_responses: 3030, avg_latency: 176
+[Cycle: 3400000]: mem_requests: 3197, mem_responses: 3197, avg_latency: 176
+[Cycle: 3500000]: mem_requests: 3353, mem_responses: 3353, avg_latency: 176
+[Cycle: 3600000]: mem_requests: 3486, mem_responses: 3485, avg_latency: 176
+[Cycle: 3700000]: mem_requests: 3555, mem_responses: 3555, avg_latency: 176
+[Cycle: 3800000]: mem_requests: 3633, mem_responses: 3633, avg_latency: 176
+[Cycle: 3900000]: mem_requests: 3721, mem_responses: 3721, avg_latency: 176
+[Cycle: 4000000]: mem_requests: 3802, mem_responses: 3802, avg_latency: 176
+[Cycle: 4100000]: mem_requests: 3891, mem_responses: 3891, avg_latency: 176
+[Cycle: 4200000]: mem_requests: 3959, mem_responses: 3959, avg_latency: 176
+RAM resp id:4000 m_cycle=4250474 req_time=4250271 resp_time=203 total_latency=705161
+[Cycle: 4300000]: mem_requests: 4037, mem_responses: 4035, avg_latency: 176
+[Cycle: 4400000]: mem_requests: 4097, mem_responses: 4097, avg_latency: 176
+[Cycle: 4500000]: mem_requests: 4147, mem_responses: 4147, avg_latency: 175
+[Cycle: 4600000]: mem_requests: 4238, mem_responses: 4238, avg_latency: 176
+[Cycle: 4700000]: mem_requests: 4393, mem_responses: 4393, avg_latency: 175
+[Cycle: 4800000]: mem_requests: 4521, mem_responses: 4520, avg_latency: 176
+[Cycle: 4900000]: mem_requests: 4611, mem_responses: 4611, avg_latency: 176
+[Cycle: 5000000]: mem_requests: 4661, mem_responses: 4661, avg_latency: 176
+[Cycle: 5100000]: mem_requests: 4726, mem_responses: 4726, avg_latency: 175
+[Cycle: 5200000]: mem_requests: 4771, mem_responses: 4771, avg_latency: 175
+[Cycle: 5300000]: mem_requests: 4836, mem_responses: 4835, avg_latency: 175
+[Cycle: 5400000]: mem_requests: 4899, mem_responses: 4899, avg_latency: 175
 core 4 retired
-core 0 retired
+core 1 retired
+core 7 retired
+core 3 retired
+[Cycle: 5500000]: mem_requests: 4912, mem_responses: 4912, avg_latency: 175
 core 5 retired
 core 2 retired
-[Cycle: 5500000]: mem_requests: 3919, mem_responses: 3919, avg_latency: 203
-core 7 retired
-core 1 retired
 core 6 retired
-core 3 retired
+core 0 retired
 ========== kernel 0 summary ==========
 Core: 0
-	CORE0_TOT_CYCLES   : 5445065
-	CORE0_STALL_CYCLES : 7596
-	CORE0_LD_INSTR     : 480
+	CORE0_TOT_CYCLES   : 5566327
+	CORE0_STALL_CYCLES : 8163
+	CORE0_LD_INSTR     : 512
 	CORE0_ST_INSTR     : 0
-	CORE0_TOT_INSTR    : 5445065
+	CORE0_TOT_INSTR    : 5566327
 Core: 1
-	CORE1_TOT_CYCLES   : 5541794
-	CORE1_STALL_CYCLES : 4113
-	CORE1_LD_INSTR     : 470
+	CORE1_TOT_CYCLES   : 5446532
+	CORE1_STALL_CYCLES : 8639
+	CORE1_LD_INSTR     : 424
 	CORE1_ST_INSTR     : 0
-	CORE1_TOT_INSTR    : 5541794
+	CORE1_TOT_INSTR    : 5446532
 Core: 2
-	CORE2_TOT_CYCLES   : 5461483
-	CORE2_STALL_CYCLES : 4043
-	CORE2_LD_INSTR     : 413
+	CORE2_TOT_CYCLES   : 5545444
+	CORE2_STALL_CYCLES : 7246
+	CORE2_LD_INSTR     : 517
 	CORE2_ST_INSTR     : 0
-	CORE2_TOT_INSTR    : 5461483
+	CORE2_TOT_INSTR    : 5545444
 Core: 3
-	CORE3_TOT_CYCLES   : 5562671
-	CORE3_STALL_CYCLES : 5019
-	CORE3_LD_INSTR     : 399
+	CORE3_TOT_CYCLES   : 5465178
+	CORE3_STALL_CYCLES : 7266
+	CORE3_LD_INSTR     : 472
 	CORE3_ST_INSTR     : 0
-	CORE3_TOT_INSTR    : 5562671
+	CORE3_TOT_INSTR    : 5465178
 Core: 4
-	CORE4_TOT_CYCLES   : 5444936
-	CORE4_STALL_CYCLES : 7467
-	CORE4_LD_INSTR     : 547
+	CORE4_TOT_CYCLES   : 5446370
+	CORE4_STALL_CYCLES : 8335
+	CORE4_LD_INSTR     : 566
 	CORE4_ST_INSTR     : 0
-	CORE4_TOT_INSTR    : 5444936
+	CORE4_TOT_INSTR    : 5446370
 Core: 5
-	CORE5_TOT_CYCLES   : 5445067
-	CORE5_STALL_CYCLES : 7241
-	CORE5_LD_INSTR     : 536
+	CORE5_TOT_CYCLES   : 5530099
+	CORE5_STALL_CYCLES : 11786
+	CORE5_LD_INSTR     : 603
 	CORE5_ST_INSTR     : 0
-	CORE5_TOT_INSTR    : 5445067
+	CORE5_TOT_INSTR    : 5530099
 Core: 6
-	CORE6_TOT_CYCLES   : 5544129
-	CORE6_STALL_CYCLES : 6448
-	CORE6_LD_INSTR     : 465
+	CORE6_TOT_CYCLES   : 5546903
+	CORE6_STALL_CYCLES : 8731
+	CORE6_LD_INSTR     : 491
 	CORE6_ST_INSTR     : 0
-	CORE6_TOT_INSTR    : 5544129
+	CORE6_TOT_INSTR    : 5546903
 Core: 7
-	CORE7_TOT_CYCLES   : 5526328
-	CORE7_STALL_CYCLES : 8618
-	CORE7_LD_INSTR     : 609
+	CORE7_TOT_CYCLES   : 5449424
+	CORE7_STALL_CYCLES : 10943
+	CORE7_LD_INSTR     : 655
 	CORE7_ST_INSTR     : 0
-	CORE7_TOT_INSTR    : 5526328
+	CORE7_TOT_INSTR    : 5449424
 GPU Retired.
 **************************************************
-Simulation finished @ Tue Feb 27 01:23:36 2024
+Simulation finished @ Wed Mar 13 20:36:28 2024
 
-Total simulation time: 0:0:9
+Total simulation time: 0:0:8
 
 ============= MacSim Stats =============
 Macsim:
-	NUM_CYCLES              : 5562670
+	NUM_CYCLES              : 5566326
 	NUM_INSTRS_RETIRED      : 43920412
-	NUM_STALL_CYCLES        : 50545
-	NUM_MEM_REQUESTS        : 3919
-	NUM_MEM_RESPONSES       : 3919
-	AVG_RESPONSE_LATENCY    : 203
+	NUM_STALL_CYCLES        : 71109
+	NUM_MEM_REQUESTS        : 4912
+	NUM_MEM_RESPONSES       : 4912
+	AVG_RESPONSE_LATENCY    : 175
 	NUM_TTIMEDOUT_REQUESTS  : 0
+	INSTR_PER_CYCLE         : 7.890377
 Cache:
-	CACHE_NUM_ACCESSES  : 626660
-	CACHE_NUM_HITS      : 622741
-	CACHE_HIT_RATE_PERC : 99.37
+	CACHE_NUM_ACCESSES    : 630900
+	CACHE_NUM_HITS        : 498606
+	CACHE_HIT_RATE_PERC   : 79.03
+	MISSES_PER_1000_INSTR : 3.01
 
 ========================================
 

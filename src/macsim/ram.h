@@ -11,7 +11,7 @@ struct RAM_request
 {
     uint64_t addr;
     bool is_store;
-    uint8_t access_sz;
+    int access_sz;
     sim_time_type req_time;
     int core_id;
     int warp_id;

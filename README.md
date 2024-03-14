@@ -40,7 +40,64 @@ schedule a warp for execution using GTO your code must do the following things:
 > Hint: look for "// TODO:" comments!
 
 ### Task-2: Simplified Cache-Conscious Wavefront Scheduler
-Implement a simplified CCWS. **The details will be provided later**. 
+In this task, you will implement the Cache-Conscious Wavefront Scheduling (CCWS) Algorithm under Round Robin. 
+
+The CCWS scheme tries to provide a warp with more exclusive access to the cache by limiting the number of warps that
+can be scheduled on the core. The goal of the scheme is to increase the intra-warp (aka wavefront) locality. 
+Each warp is given a *Lost Locality Score* (LLS) based on how much intra-warp locality it has lost. The warps 
+in the dispatch queue are then sorted in descending order of the LLS scores and the group of warps whose 
+cumulative scores are within the *Cumulative LLS cutoff* (starting from the beginning) are allowed to be 
+scheduled by the underlying scheduler (Round Robin in this case). the LLS scores are assigned to warps by 
+using a feedback mechanism from the cache.
+
+In our implementation, for each warp(`trace_reader_main.h::warp_s`), we keep an instance of the 
+`ccws_vta.h::ccws_vta` class to stimulate that warp's VTA entry. VTA class simulates a fully-associative 
+[victim cache](https://en.wikipedia.org/wiki/Victim_cache) with LRU replacement policy and is used to 
+store the evicted tags from L1 cache. We also use a variable in `trace_reader_main.h::warp_s` to keep 
+track of a warp's LLS score and assign its value to the base LLS score when the warp is dispatched.
+
+To implement CCWS your code must do the following things:
+
+**Setting up the feedback mechanism from the cache subsystem:** 
+1. While repairing an L1 cache miss, a line from L1 cache could get evicted. In this case, we need to insert the tag
+  corresponding to the evicted line address in corresponding warp's VTA entry. **[Task 2.1a and 2.1b]**
+
+> In macsim, L1 cache insertion (and potentially eviction) happens in the following 2 cases:
+>  - **L1 Miss, L2 hit**: In this case L1 can evict a line when it repairs the miss by getting data from the l2 cache.
+>  - **L1 Miss, L2 Miss**:  In this case, a memory request is sent and when the response is returned, the data gets
+>  inserted in both L1 and L2 caches. 
+
+2. Whenever there is a miss in the L1 cache, check if the tag is present in the VTA, if yes (VTA Hit!), increment the
+  VTA hits counter and update the LLS score for the warp. **[Task 2.2a and 2.2b]**  
+  `LLS = ( VTA_Hits_Total * K_Throttle * Cum_LLS_Cutoff) / Num_Instr` where:
+    - `Cum_LLS_Cutoff = Num_Active_Warps * Base_Locality_Score`
+    - *VTA_Hits_Total* is the number of VTA hits across all warps on the core.
+    - *K_Throttle* is the throttling parameter (value is given in `macsim.h`).
+    - *Num_Active_Warps* is the number of warps in the dispatch queue.
+    - *Base_Locality_Score* is the base locality score (value is given in `macsim.h`).
+
+> Note: LLS score cannot be less than the Base LLS score for any warp at any point in time, you need to enforce this
+> while updating the LLS scores.
+
+3. In each cycle decrease the LLS scores by 1 for all the warps in the core (running, active, and suspended) until they 
+  reach the minimum value equal to the `Base_Locality_Score`. **[Task 2.3]**
+
+**Implementing CCWS Scheduler:**  
+4. The outline for implementing the CCWS is available in `core.cpp::schedule_warps_ccws()`. 
+  - Determine the Cumulative LLS cutoff value using: `Cum_LLS_Cutoff = Num_Active_Warps * Base_Locality_Score` **[Task 2.4a]**
+
+  - Construct the set of warps from the dispatch queue which are allowed to be scheduled (*scheduleable set*): **[Task 2.4b]**
+    - Create a copy of the dispatch queue, and sort it in descending order.
+    - Collect the the warps with highest LLS scores (until we reach the cumulative cutoff) to construct the *scheduleable warps* set.
+  
+  - Use Round Robin as baseline scheduling logic to schedule warps from the dispatch queue only if the warp is present
+    in the *scheduleable warps* set. **[Task 2.4c]**
+
+**You may refer to the CCWS paper (Specifically Section 3.3)**  
+T. G. Rogers, M. O'Connor, and T. M. Aamodt, "Cache-Conscious Wavefront Scheduling," 2012 45th Annual IEEE/ACM 
+International Symposium on Microarchitecture, Vancouver, BC, Canada, 2012, pp. 72-83, doi: 10.1109/MICRO.2012.16. 
+
+> Hint: look for "// TODO: Task 2.xx:" comments!
 
 ### Task-3: Report
 In this task, you'll write a report containing the following things:
@@ -50,24 +107,27 @@ In this task, you'll write a report containing the following things:
     benchmarks. 
   - Any interesting things you observed (Optional).
 - For Task-2:
-  - [To be added]
+  - A short explanation of your implementation.
+  - A comparison of the performance of the round-robin, GTO, and CCWS scheduling algorithms across provided benchmarks.
 
 > Note: Keep your report within 2 pages, and submit a PDF file.
 
 > Report grades are typically assessed on a pass/fail basis, where submission guarantees full credit. Additionally,
-> reports may contribute bonus points to compensate for any potential loss in grades for Task 1 and Task 2.
+> Reports may contribute bonus points to compensate for any potential loss in grades for Task 1 and Task 2.
 
 ## Grading
 - The assignment is worth **25 points** and is divided into 3 components, Task-1, Task-2 and a report.
 - **0 points** if you don't submit anything by the deadline.
 - **Task-1 is worth 10 points**, **Task-2 is worth 13 points**, and the **report is worth 2 points**.
 - Rubric for Task-1 and Task-2:
-  - **+50% points**: if you submit and code that compiles and runs without any errors/warnings but does **NOT** match
-    the stats within acceptable tolerance.
+  - **+50% points**: if you submit a code that compiles and runs without any errors/warnings but does **NOT** match
+    the stats within the acceptable tolerance.
   - **+40% points**: if your stats match the reference stats within acceptable tolerance **(+-5%)**.
   - **+10% points**: if your stats exactly match the reference stats.
 
-> For Task-1 We will use the *NUM_STALL_CYCLES* values from the `log/results.log` to award points. 
+> For Task-1 We will use the *NUM_STALL_CYCLES* values from the logs to award points. 
+
+> For Task-2 We will use the *MISSES_PER_1000_INSTR* values from the logs to award points. 
 
 ## Submission Guidelines
 - You must submit all the deliverables on GradeScope (Which can be accessed through the Canvas menu).

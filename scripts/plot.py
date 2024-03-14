@@ -18,19 +18,23 @@ def filter_values_from_stats(key, data):
     for gpucfg in gpu_configs:
         values[gpucfg] = []
 
+    # Check if we need to skip any benchmarks
+    skipped_benchmarks=[]
     for benchmark in benchmarks:
-        skip_benchmark = False
         for gpucfg in gpu_configs:
-            benchmark_data = data[gpucfg][benchmark]
+            benchmark_data = data[gpucfg][benchmark]          
             if key not in benchmark_data.keys():
                 print(f'... skipping {benchmark} due to missing key "{key}" in {gpucfg}:{benchmark}')
-                skip_benchmark = True
-                break
-            values[gpucfg] += [data[gpucfg][benchmark][key]]
+                if benchmark not in skipped_benchmarks:
+                    skipped_benchmarks += [benchmark]
 
-        if not skip_benchmark:
-            # Add to list
-            tags += [benchmark]
+    # Add tag, data
+    for benchmark in benchmarks:
+        if benchmark in skipped_benchmarks:
+            continue # Skip
+        tags += [benchmark]
+        for gpucfg in gpu_configs:
+            values[gpucfg] += [data[gpucfg][benchmark][key]]
     return tags, values
 
 

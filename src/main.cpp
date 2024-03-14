@@ -17,9 +17,20 @@ using namespace std;
 /**
  * Parse command line arguments
  */
-void command_line_args(char* argv[], string& gpuconfig_file_path, string& kernel_config_file_path)
+void command_line_args(int argc, char* argv[], string& gpuconfig_file_path, string& kernel_config_file_path, sim_time_type &ncycles)
 {
-	for (int arg_cntr = 1; arg_cntr < 9; arg_cntr++) {
+	string help_msg = 
+	"MacSim\n"
+	"\tUsage: macsim [-g gpu-config-file] [-t kernel-config-file] (-c cycles-to-run (default:inf))\n" 
+	"\n[..]: Compulsory, (..): Optional\n";
+	
+	if(argc < 5) { // 5 compulsory, 2 optional
+		cout << help_msg << endl;
+		exit(1);
+	}
+
+	bool abort=false;
+	for (int arg_cntr = 1; arg_cntr < argc; arg_cntr++) {
 		if (argv[arg_cntr] == nullptr) break;
 		string arg = argv[arg_cntr];
 
@@ -35,6 +46,21 @@ void command_line_args(char* argv[], string& gpuconfig_file_path, string& kernel
 			kernel_config_file_path.assign(argv[++arg_cntr]);
 			continue;
 		}
+		
+		char ncycles_switch[] = "-c";	// Optional
+		if (arg.compare(0, strlen(ncycles_switch), ncycles_switch) == 0) {
+			if(arg_cntr == argc-1) {
+				abort = true;
+				break;
+			}
+			ncycles = std::stoul(argv[++arg_cntr]);
+			continue;
+		}
+	}
+
+	if(abort) {
+		cout << help_msg << endl;
+		exit(1);
 	}
 }
 
@@ -93,15 +119,6 @@ void read_gpu_configuration_parameters(const string gpu_config_file_path, GPU_Pa
 	gpu_config_file.close();
 }
 
-/**
- * Prints usage help message
-*/
-void print_help()
-{
-	cout << 
-	"MacSim\n"
-	"\tUsage: macsim [-g gpu-config-file] [-t kernel-config-file]\n" << endl;
-}
 
 /**
  * Main
@@ -110,11 +127,8 @@ int main(int argc, char* argv[])
 {
 	// Parse command line argumnets
 	string ssd_config_file_path, gpu_config_file_path, output_stats_file_path, kernel_config_file_path;
-	if (argc != 5 && argc != 1) {
-		print_help();
-		return 1;
-	}
-	command_line_args(argv, gpu_config_file_path, kernel_config_file_path);
+	sim_time_type ncycles=(sim_time_type)-1;
+	command_line_args(argc, argv, gpu_config_file_path, kernel_config_file_path, ncycles);
 
 	// Read config files
 	GPU_Parameter_Set* gpu_params = new GPU_Parameter_Set;
@@ -144,6 +158,11 @@ int main(int argc, char* argv[])
 	PRINT_MESSAGE("**************************************************");
 
 	while(gpu.run_a_cycle()) {
+		if(gpu.m_cycle >= ncycles){
+			printf(".\n.\n.\n!!!!! Terminated simulation early @ %ld cycles !!!!!\n\n", ncycles);
+			break;
+		}
+
 		if (gpu.m_cycle % 100000 == 0) {
 			printf("[Cycle: %lu]: mem_requests: %d, mem_responses: %d, avg_latency: %u\n", gpu.m_cycle, gpu.get_n_requests(), gpu.get_n_responses(), gpu.get_avg_latency());
 		}
