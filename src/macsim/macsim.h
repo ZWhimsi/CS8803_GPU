@@ -4,12 +4,12 @@
 #include <string>
 #include <queue>
 #include <vector>
+#include <map>
 #include <algorithm>
 
 #include "sim_defs.h"
-#include "utils.h"
-#include "trace_reader_main.h"
-#include "trace_reader.h"
+#include "utils/utils.h"
+#include "trace.h"
 
 #include "exec/GPU_Parameter_Set.h"
 #include "ram.h"
@@ -28,13 +28,61 @@ typedef struct cache_data_t {
   bool m_dirty;           /**< line dirty */
 } cache_data_t;
 
+class cache_c;
+class ccws_vta;
+
+typedef struct kernel_info_s {
+  int n_of_warp;
+  int n_warp_per_block = 0;
+  int n_of_block;
+  vector<tuple<int, int, int>> warp_id_v; // warp_id, warp_start_inst_count, warp_total_inst
+
+  Counter inst_count_total = 0;
+} kernel_info_s;
+
+typedef struct warp_s {
+  gzFile m_trace_file;
+
+  // Trace buffer for reading trace file
+  const unsigned trace_buffer_size = 32;                  // number of instruction the buffer can hold
+  std::queue <trace_info_nvbit_small_s *> trace_buffer;   // Trace buffer
+
+  // TODO: We need to have a per-warp timestamp marker
+
+  // VTA entry for warp
+  ccws_vta * ccws_vta_entry;
+
+  // LLS score for warp
+  int ccws_lls_score=0;
+  
+  bool m_file_opened;
+  bool m_trace_ended;
+  // int file_pointer_offset = 0;
+  int warp_id;
+  int block_id; // this one is different from unique_block_id. for every kernel, the id starts from 0
+} warp_s;
+
+typedef struct warp_trace_info_node_s {
+  warp_s* trace_info_ptr; /**< trace information pointer */
+  int warp_id; /**< warp id */
+  int unique_block_id; /**< block id */
+} warp_trace_info_node_s;
+
+typedef struct block_schedule_info_s {
+  bool start_to_fetch = false; /**< start fetching */
+  int dispatched_core_id = -1; /**< core id in which this block is launched */
+  bool retired = false; /**< retired */
+  int dispatched_thread_num = 0;; /**< number of dispatched threads */
+  // int retired_thread_num; /**< number of retired threads */
+  int total_thread_num = 0; /**< number of total threads */
+  // int dispatch_done; /**< dispatch done */
+  bool trace_exist = false; /**< trace exist */
+  // Counter sched_cycle; /**< scheduled cycle */
+  // Counter retire_cycle; /**< retired cycle */
+} block_schedule_info_s;
+
 enum class Block_Scheduling_Policy_Types {
   ROUND_ROBIN = 0,
-  LARGE_CHUNK = 1,
-  STRIDED = 2,
-  LASP = 3,
-  CA_AWARE = 4,
-  CA_GC = 5,
 };
 
 constexpr const char* Block_Scheduling_Policy_Types_str[] = {
@@ -221,371 +269,6 @@ private:
   int l2cache_banks;
 };
 
-const std::string GPU_NVBIT_OPCODE[] = {
-  "FADD",
-  "FADD32I",
-  "FCHK",
-  "FFMA32I",
-  "FFMA",
-  "FMNMX",
-  "FMUL",
-  "FMUL32I",
-  "FSEL",
-  "FSET",
-  "FSETP",
-  "FSWZADD",
-  "MUFU",
-  "HADD2",
-  "HADD2_32I",
-  "HFMA2",
-  "HFMA2_32I",
-  "HMMA",
-  "HMUL2",
-  "HMUL2_32I",
-  "HSET2",
-  "HSETP2",
-  "DADD",
-  "DFMA",
-  "DMUL",
-  "DSETP",
-  "BMMA",
-  "BMSK",
-  "BREV",
-  "FLO",
-  "IABS",
-  "IADD",
-  "IADD3",
-  "IADD32I",
-  "IDP",
-  "IDP4A",
-  "IMAD",
-  "IMMA",
-  "IMNMX",
-  "IMUL",
-  "IMUL32I",
-  "ISCADD",
-  "ISCADD32I",
-  "ISETP",
-  "LEA",
-  "LOP",
-  "LOP3",
-  "LOP32I",
-  "POPC",
-  "SHF",
-  "SHL",
-  "SHR",
-  "VABSDIFF",
-  "VABSDIFF4",
-  "F2F",
-  "F2I",
-  "I2F",
-  "I2I",
-  "I2IP",
-  "FRND",
-  "MOV",
-  "MOV32I",
-  "MOVM",
-  "PRMT",
-  "SEL",
-  "SGXT",
-  "SHFL",
-  "PLOP3",
-  "PSETP",
-  "P2R",
-  "R2P",
-  "LD",
-  "LDC",
-  "LDG",
-  "LDL",
-  "LDS",
-  "LDSM",
-  "ST",
-  "STG",
-  "STL",
-  "STS",
-  "MATCH",
-  "QSPC",
-  "ATOM",
-  "ATOMS",
-  "ATOMG",
-  "RED",
-  "CCTL",
-  "CCTLL",
-  "ERRBAR",
-  "MEMBAR",
-  "CCTLT",
-  "R2UR",
-  "S2UR",
-  "UBMSK",
-  "UBREV",
-  "UCLEA",
-  "UFLO",
-  "UIADD3",
-  "UIADD3_64",
-  "UIMAD",
-  "UISETP",
-  "ULDC",
-  "ULEA",
-  "ULOP",
-  "ULOP3",
-  "ULOP32I",
-  "UMOV",
-  "UP2UR",
-  "UPLOP3",
-  "UPOPC",
-  "UPRMT",
-  "UPSETP",
-  "UR2UP",
-  "USEL",
-  "USGXT",
-  "USHF",
-  "USHL",
-  "USHR",
-  "VOTEU",
-  "TEX",
-  "TLD",
-  "TLD4",
-  "TMML",
-  "TXD",
-  "TXQ", 
-  "SUATOM",
-  "SULD",
-  "SURED",
-  "SUST",
-  "BMOV",
-  "BPT",
-  "BRA",
-  "BREAK",
-  "BRX",
-  "BRXU",
-  "BSSY",
-  "BSYNC",
-  "CALL",
-  "EXIT",
-  "JMP",
-  "JMX",
-  "JMXU",
-  "KILL",
-  "NANOSLEEP",
-  "RET",
-  "RPCMOV",
-  "RTT",
-  "WARPSYNC",
-  "YIELD",
-  "B2R",
-  "BAR",
-  "CS2R",
-  "DEPBAR",
-  "GETLMEMBASE",
-  "LEPC",
-  "NOP",
-  "PMTRIG",
-  "R2B",
-  "S2R",
-  "SETCTAID",
-  "SETLMEMBASE",
-  "VOTE"
-};
 
-enum GPU_NVBIT_OPCODE_ {
-  FADD = 0,
-  FADD32I,
-  FCHK,
-  FFMA32I,
-  FFMA,
-  FMNMX,
-  FMUL,
-  FMUL32I,
-  FSEL,
-  FSET,
-  FSETP,
-  FSWZADD,
-  MUFU,
-  HADD2,
-  HADD2_32I,
-  HFMA2,
-  HFMA2_32I,
-  HMMA,
-  HMUL2,
-  HMUL2_32I,
-  HSET2,
-  HSETP2,
-  DADD,
-  DFMA,
-  DMUL,
-  DSETP,
-  BMMA,
-  BMSK,
-  BREV,
-  FLO,
-  IABS,
-  IADD,
-  IADD3,
-  IADD32I,
-  IDP,
-  IDP4A,
-  IMAD,
-  IMMA,
-  IMNMX,
-  IMUL,
-  IMUL32I,
-  ISCADD,
-  ISCADD32I,
-  ISETP,
-  LEA,
-  LOP,
-  LOP3,
-  LOP32I,
-  POPC,
-  SHF,
-  SHL,
-  SHR,
-  VABSDIFF,
-  VABSDIFF4,
-  F2F,
-  F2I,
-  I2F,
-  I2I,
-  I2IP,
-  FRND,
-  MOV,
-  MOV32I,
-  MOVM,
-  PRMT,
-  SEL,
-  SGXT,
-  SHFL,
-  PLOP3,
-  PSETP,
-  P2R,
-  R2P,
-  LD,
-  LDC,
-  LDG,
-  LDL,
-  LDS,
-  LDSM,
-  ST,
-  STG,
-  STL,
-  STS,
-  MATCH,
-  QSPC,
-  ATOM,
-  ATOMS,
-  ATOMG,
-  RED,
-  CCTL,
-  CCTLL,
-  ERRBAR,
-  MEMBAR,
-  CCTLT,
-  R2UR,
-  S2UR,
-  UBMSK,
-  UBREV,
-  UCLEA,
-  UFLO,
-  UIADD3,
-  UIADD3_64,
-  UIMAD,
-  UISETP,
-  ULDC,
-  ULEA,
-  ULOP,
-  ULOP3,
-  ULOP32I,
-  UMOV,
-  UP2UR,
-  UPLOP3,
-  UPOPC,
-  UPRMT,
-  UPSETP,
-  UR2UP,
-  USEL,
-  USGXT,
-  USHF,
-  USHL,
-  USHR,
-  VOTEU,
-  TEX,
-  TLD,
-  TLD4,
-  TMML,
-  TXD,
-  TXQ,
-  SUATOM,
-  SULD,
-  SURED,
-  SUST,
-  BMOV,
-  BPT,
-  BRA,
-  BREAK,
-  BRX,
-  BRXU,
-  BSSY,
-  BSYNC,
-  CALL,
-  EXIT,
-  JMP,
-  JMX,
-  JMXU,
-  KILL,
-  NANOSLEEP,
-  RET,
-  RPCMOV,
-  RTT,
-  WARPSYNC,
-  YIELD,
-  B2R,
-  BAR,
-  CS2R,
-  DEPBAR,
-  GETLMEMBASE,
-  LEPC,
-  NOP,
-  PMTRIG,
-  R2B,
-  S2R,
-  SETCTAID,
-  SETLMEMBASE,
-  VOTE
-};
-
-const std::string LD_LIST[] = {
-  "LD",
-  "LDC",
-  "LDG",
-  "LDL",
-  "LDS",
-  "LDSM"
-};
-
-const std::string ST_LIST[] = {
-  "ST",
-  "STG",
-  "STL",
-  "STS"
-};
-
-const std::string SHARED_MEM_LIST[] = {
-  "LDS",
-  "LDSM",
-  "STS"
-};
-
-inline bool is_ld(uint8_t opcode){
-  auto it = find(begin(LD_LIST), end(LD_LIST), GPU_NVBIT_OPCODE[opcode]);
-  return (it != end(LD_LIST));
-}
-inline bool is_st(uint8_t opcode){
-  auto it = find(begin(ST_LIST), end(ST_LIST), GPU_NVBIT_OPCODE[opcode]);
-  return (it != end(ST_LIST));
-}
-inline bool is_using_shared_memory(uint8_t opcode){
-  auto it = find(begin(SHARED_MEM_LIST), end(SHARED_MEM_LIST), GPU_NVBIT_OPCODE[opcode]);
-  return (it != end(SHARED_MEM_LIST));
-}
 
 #endif // MACSIM_H

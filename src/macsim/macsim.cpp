@@ -36,7 +36,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <cstdlib>
 #include <random>
 
-#include "trace_reader.h"
+#include "trace.h"
 #include "macsim.h"
 #include "core.h"
 #include "cache.h"
@@ -421,20 +421,6 @@ bool macsim::run_a_cycle(){
         entry++;
       }
     }
-
-    // debug
-    if (m_cycle % 100000000 == 0) {
-      bool found = false; // find the timeout entry
-      vector<GPU_scoreboard_entry>::iterator timeout_entry;
-      for (auto entry = GPU_scoreboard.begin(); entry != GPU_scoreboard.end(); ++entry) {
-        if ((entry->core_id == 2) && (n_responses >= 100)) {
-          found = true;
-          timeout_entry = entry;
-          exit(1);
-        }
-      }
-      if (found) MA_DEBUG2("Found core 2 requested at " << timeout_entry->req_time << " m_cycle=" << m_cycle  << " avg response time is " << total_latency/n_responses);
-    }
   }
 
   if (is_every_core_retired()) kernel_ending = true;
@@ -475,14 +461,6 @@ void macsim::start_kernel(){
     create_warp_node(kernel_id, get<0>(kernel_info_v[kernel_id].warp_id_v[warp_id]));
   }
   block_scheduling_policy = m_gpu_params->Block_Scheduling_Policy;
-  // if enough number of blocks are in the kernel, use strided block scheduling
-  MA_DEBUG2("n_blocks_per_kernel[kernel_id]: " << n_blocks_per_kernel[kernel_id] << \
-    " m_gpu_params->Block_Stride: " << m_gpu_params->Block_Stride << " n_of_cores: " << n_of_cores)
-  if (block_scheduling_policy == Block_Scheduling_Policy_Types::STRIDED && \
-     n_blocks_per_kernel[kernel_id] < m_gpu_params->Block_Stride * n_of_cores) {
-      MA_DEBUG2("Too few blocks and stride*core too large, use large chunk instead")
-     block_scheduling_policy = Block_Scheduling_Policy_Types::LARGE_CHUNK;
-  }
 
   dispatch_warps(-1, block_scheduling_policy);
   kernel_starting = false;
@@ -676,37 +654,6 @@ int macsim::schedule_blocks_rr(int core_id){
     return new_block_id;
   }
 }
-
-int macsim::retire_block_helper(int core_id) {
-  core_c* core = core_pointers_v[core_id];
-  int fetching_block_id = core->c_fetching_block_id;
-
-  // Check whether the current block has more warps to execute. If not, retire the block
-  if (fetching_block_id != -1){
-    list<warp_trace_info_node_s *> *block_list = (*m_block_queue)[fetching_block_id];
-    if (block_list->empty() && !m_block_schedule_info[fetching_block_id]->retired){
-      // check every warp that is suspended. if any of them belong to fetching_block_id, return -1
-      for (const auto& pair: core->c_suspended_warps){
-        if (pair.second->block_id == fetching_block_id) return -1;
-      }
-      m_block_schedule_info[fetching_block_id]->retired = true;
-      core->c_running_block_num--;
-    }
-  }
-
-  // If the current block that the core is fetching is not retired, return the current block id
-  if ((fetching_block_id != -1) &&
-      m_block_schedule_info.find(fetching_block_id) != m_block_schedule_info.end() &&
-      !(m_block_schedule_info[fetching_block_id]->retired)) {
-    return fetching_block_id;
-  }
-
-  if (core->c_running_block_num >= max_block_per_core) return -1;
-
-  return -2; // Block retired, search for new block
-}
-
-
 
 warp_trace_info_node_s* macsim::fetch_warp_from_block(int block_id) {
   if (block_id == -1) return NULL;

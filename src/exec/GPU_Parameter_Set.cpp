@@ -6,13 +6,10 @@ int GPU_Parameter_Set::Num_Of_Cores = 4;
 int GPU_Parameter_Set::Max_Block_Per_Core = 4;
 Block_Scheduling_Policy_Types GPU_Parameter_Set::Block_Scheduling_Policy = Block_Scheduling_Policy_Types::ROUND_ROBIN;
 Warp_Scheduling_Policy_Types GPU_Parameter_Set::Warp_Scheduling_Policy = Warp_Scheduling_Policy_Types::ROUND_ROBIN;
-int GPU_Parameter_Set::Block_Stride = 1;
-double GPU_Parameter_Set::Compiler_Stride = 4;
-std::string GPU_Parameter_Set::GPU_Trace_Path = "/fast_data/echung67/trace/nvbit/backprop/128/kernel_config.txt";
+std::string GPU_Parameter_Set::GPU_Trace_Path = "macsim_traces/backprop/8192/kernel_config.txt";
 int GPU_Parameter_Set::N_Repeat = 1;
 bool GPU_Parameter_Set::Enable_GPU_Cache = true;
 bool GPU_Parameter_Set::GPU_Cache_Log = false;
-bool GPU_Parameter_Set::Enable_GPU_Vaddr_Dump = false;
 int GPU_Parameter_Set::L1Cache_Size = 8;
 int GPU_Parameter_Set::L1Cache_Assoc = 2;
 int GPU_Parameter_Set::L1Cache_Line_Size = 64;
@@ -21,8 +18,6 @@ int GPU_Parameter_Set::L2Cache_Size = 128;
 int GPU_Parameter_Set::L2Cache_Assoc = 8;
 int GPU_Parameter_Set::L2Cache_Line_Size = 64;
 int GPU_Parameter_Set::L2Cache_Banks = 1;
-int GPU_Parameter_Set::Sharing_Size = -1;
-int GPU_Parameter_Set::Sharing_Stride = -1;
 
 void GPU_Parameter_Set::XML_serialize(Utils::XmlWriter& xmlwriter)
 {
@@ -42,26 +37,32 @@ void GPU_Parameter_Set::XML_serialize(Utils::XmlWriter& xmlwriter)
 	val = std::to_string(Max_Block_Per_Core);
 	xmlwriter.Write_attribute_string(attr, val);
 
-	attr = "Scheduling_Policy";
-	// val;
+	attr = "Block_Scheduling_Policy";
 	switch (Block_Scheduling_Policy) {
 		case Block_Scheduling_Policy_Types::ROUND_ROBIN:
 			val = "ROUND_ROBIN";
 			break;
-		// case Block_Scheduling_Policy_Types::LARGE_CHUNK:
-		// 	val = "LARGE_CHUNK";
-			break;
 		default:
+			val = "UNKNOWN";
 			break;
 	}
 	xmlwriter.Write_attribute_string(attr, val);
 
-	attr = "Block_Stride";
-	val = std::to_string(Block_Stride);
-	xmlwriter.Write_attribute_string(attr, val);
-
-	attr = "Compiler_Stride";
-	val = std::to_string(Compiler_Stride);
+	attr = "Warp_Scheduling_Policy";
+	switch (Warp_Scheduling_Policy) {
+		case Warp_Scheduling_Policy_Types::ROUND_ROBIN:
+			val = "ROUND_ROBIN";
+			break;
+		case Warp_Scheduling_Policy_Types::GTO:
+			val = "GTO";
+			break;
+		case Warp_Scheduling_Policy_Types::CCWS:
+			val = "CCWS";
+			break;
+		default:
+			val = "UNKNOWN";
+			break;
+	}
 	xmlwriter.Write_attribute_string(attr, val);
 
 	attr = "GPU_Trace_Path";
@@ -78,10 +79,6 @@ void GPU_Parameter_Set::XML_serialize(Utils::XmlWriter& xmlwriter)
 
 	attr = "GPU_Cache_Log";
 	val = (GPU_Cache_Log ? "true" : "false");
-	xmlwriter.Write_attribute_string(attr, val);
-
-	attr = "Enable_GPU_Vaddr_Dump";
-	val = (Enable_GPU_Vaddr_Dump ? "true" : "false");
 	xmlwriter.Write_attribute_string(attr, val);
 
 	attr = "L1Cache_Size";
@@ -153,12 +150,6 @@ void GPU_Parameter_Set::XML_deserialize(rapidxml::xml_node<> *node)
 				} else {
 					PRINT_ERROR("Unknown warp scheduling policy type specified in the GPU configuration file")
 				}
-			} else if (strcmp(param->name(), "Block_Stride") == 0) {
-				std::string val = param->value();
-				Block_Stride = std::stoi(val);
-			} else if (strcmp(param->name(), "Compiler_Stride") == 0) {
-				std::string val = param->value();
-				Compiler_Stride = std::stod(val);
 			} else if (strcmp(param->name(), "GPU_Trace_Path") == 0) {
 				std::string val = param->value();
 				GPU_Trace_Path = val;
@@ -173,10 +164,6 @@ void GPU_Parameter_Set::XML_deserialize(rapidxml::xml_node<> *node)
 				std::string val = param->value();
 				std::transform(val.begin(), val.end(), val.begin(), ::toupper);
 				GPU_Cache_Log = (val.compare("FALSE") == 0 ? false : true);
-			} else if (strcmp(param->name(), "Enable_GPU_Vaddr_Dump") == 0) {
-				std::string val = param->value();
-				std::transform(val.begin(), val.end(), val.begin(), ::toupper);
-				Enable_GPU_Vaddr_Dump = (val.compare("FALSE") == 0 ? false : true);
 			} else if (strcmp(param->name(), "L1Cache_Size") == 0) {
 				std::string val = param->value();
 				L1Cache_Size = std::stoi(val);
@@ -201,12 +188,6 @@ void GPU_Parameter_Set::XML_deserialize(rapidxml::xml_node<> *node)
 			} else if (strcmp(param->name(), "L2Cache_Banks") == 0) {
 				std::string val = param->value();
 				L2Cache_Banks = std::stoi(val);
-			} else if (strcmp(param->name(), "Sharing_Size") == 0) {
-				std::string val = param->value();
-				Sharing_Size = std::stoi(val);
-			} else if (strcmp(param->name(), "Sharing_Stride") == 0) {
-				std::string val = param->value();
-				Sharing_Stride = std::stoi(val);
 			}
 		}
 	}

@@ -48,7 +48,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <unordered_set>
 #include <fstream>
 
-#include "global_types.h"
+#include "sim_defs.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 

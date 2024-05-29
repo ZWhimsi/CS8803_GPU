@@ -3,8 +3,7 @@
 
 #include <queue>
 #include <vector>
-#include "trace_reader_main.h"
-#include "trace_reader.h"
+#include "trace.h"
 #include "macsim.h"
 #include "cache.h"
 

@@ -15,14 +15,10 @@ public:
 	static int Max_Block_Per_Core;
 	static Block_Scheduling_Policy_Types Block_Scheduling_Policy;
 	static Warp_Scheduling_Policy_Types Warp_Scheduling_Policy;
-	static int Block_Stride;
-	static double Compiler_Stride;
 	static std::string GPU_Trace_Path;
 	static int N_Repeat;
 	static bool Enable_GPU_Cache;
 	static bool GPU_Cache_Log;
-	static bool Enable_GPU_Vaddr_Dump;
-
 	static int L1Cache_Size;
 	static int L1Cache_Assoc;
 	static int L1Cache_Line_Size;
@@ -31,10 +27,6 @@ public:
 	static int L2Cache_Assoc;
 	static int L2Cache_Line_Size;
 	static int L2Cache_Banks;
-
-	// LASP scheduling specific parameters
-	static int Sharing_Size;
-	static int Sharing_Stride;
 
 	void XML_serialize(Utils::XmlWriter& xmlwriter);
 	void XML_deserialize(rapidxml::xml_node<> *node);

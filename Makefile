@@ -67,12 +67,16 @@ cov: $(SRC)									#t# generate coverage metadata
 traces:										#t# Download traces (if not present)
 	bash ./scripts/get_traces.sh $(TRACE_DIR)
 
+.PHONY: run_task0
+run_task0: traces							#t# Run simulator with the default (RR) warp scheduling policy
+	python3 scripts/runner.py -c RR -t $(TRACE_DIR) -l $(LOG_DIR) -r -d $(LOG_DIR)/results.txt -j $(LOG_DIR)/results.json
+
 .PHONY: run_task1
-run_task1: traces							#t# Run simulator for task-1
+run_task1: traces							#t# Run simulator for task-1 (GTO)
 	python3 scripts/runner.py -c RR:GTO -t $(TRACE_DIR) -l $(LOG_DIR) -r -d $(LOG_DIR)/results.txt -j $(LOG_DIR)/results.json
 
 .PHONY: run_task2
-run_task2: traces							#t# Run simulator for task-2
+run_task2: traces							#t# Run simulator for task-2 (GTO and CCWS)
 	python3 scripts/runner.py -c RR:GTO:CCWS -t $(TRACE_DIR) -l $(LOG_DIR) -r -d $(LOG_DIR)/results.txt -j $(LOG_DIR)/results.json
 
 .PHONY: plot

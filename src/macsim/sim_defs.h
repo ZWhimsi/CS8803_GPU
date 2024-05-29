@@ -47,4 +47,28 @@ typedef std::string sim_object_id_type;
   #define CCWSLOG(x)
 #endif
 
+// Renames
+// Try to use these rather than built-in C types in order to preserve portability
+typedef unsigned uns;
+typedef unsigned char uns8;
+typedef unsigned short uns16;
+typedef unsigned uns32;
+typedef unsigned long long uns64;
+typedef char int8;
+typedef short int16;
+typedef int int32;
+typedef int long long int64;
+typedef int Generic_Enum;
+typedef uns64 Counter;
+typedef int64 Quad;
+typedef uns64 UQuad;
+
+/* power & hotleakage  */ /* please CHECKME Hyesoon 6-15-2009 */
+typedef uns64 tick_t;
+typedef uns64 counter_t;
+
+/* Conventions */
+typedef uns64 Addr;
+typedef uns32 Binary;
+
 #endif // !DEFINITIONS_H

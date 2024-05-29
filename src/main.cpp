@@ -70,6 +70,23 @@ void command_line_args(int argc, char* argv[], string& gpuconfig_file_path, stri
 void read_gpu_configuration_parameters(const string gpu_config_file_path, GPU_Parameter_Set* gpu_params)
 {
 	ifstream gpu_config_file;
+	if (gpu_config_file_path.empty()) {
+		PRINT_MESSAGE("GPU configuration file not specified.")
+		PRINT_MESSAGE("Using Macsim's default configuration.")
+		PRINT_MESSAGE("Writing the default configuration parameters to the expected configuration file.")
+
+		Utils::XmlWriter xmlwriter;
+		string tmp;
+		string default_gpu_config_file_path = string("xmls/gpuconfig_default.xml");
+		xmlwriter.Open(default_gpu_config_file_path.c_str());
+
+		printf("Default GPU Configuration File is %s\n",default_gpu_config_file_path.c_str());
+		gpu_params->XML_serialize(xmlwriter);
+		xmlwriter.Close();
+		PRINT_MESSAGE("[====================] Done!\n")
+
+		return;
+	}
 	gpu_config_file.open(gpu_config_file_path.c_str());
 
 	if (!gpu_config_file) {
@@ -90,29 +107,17 @@ void read_gpu_configuration_parameters(const string gpu_config_file_path, GPU_Pa
 		string line((std::istreambuf_iterator<char>(gpu_config_file)),
 			std::istreambuf_iterator<char>());
 		gpu_config_file >> line;
-		if (line.compare("USE_INTERNAL_PARAMS") != 0) {
-			rapidxml::xml_document<> doc;    // character type defaults to char
-			char temp_string [line.length() + 1];
-			strcpy(temp_string, line.c_str());
-			doc.parse<0>(temp_string);
-			rapidxml::xml_node<> *macsim_config = doc.first_node("GPU_Parameter_Set");
-			if (macsim_config != NULL) {
-				gpu_params = new GPU_Parameter_Set;
-				gpu_params->XML_deserialize(macsim_config);
-			} else {
-				PRINT_MESSAGE("Error in the GPU configuration file!")
-				PRINT_MESSAGE("Using Macsim's default configuration.")
-			}
+		rapidxml::xml_document<> doc;    // character type defaults to char
+		char temp_string [line.length() + 1];
+		strcpy(temp_string, line.c_str());
+		doc.parse<0>(temp_string);
+		rapidxml::xml_node<> *macsim_config = doc.first_node("GPU_Parameter_Set");
+		if (macsim_config != NULL) {
+			gpu_params = new GPU_Parameter_Set;
+			gpu_params->XML_deserialize(macsim_config);
 		} else {
+			PRINT_MESSAGE("Error in the GPU configuration file!")
 			PRINT_MESSAGE("Using Macsim's default configuration.")
-			PRINT_MESSAGE("Writing the default configuration parameters to the expected configuration file.")
-
-			Utils::XmlWriter xmlwriter;
-			string tmp;
-			xmlwriter.Open(gpu_config_file_path.c_str());
-			gpu_params->XML_serialize(xmlwriter);
-			xmlwriter.Close();
-			PRINT_MESSAGE("[====================] Done!\n")
 		}
 	}
 
@@ -132,7 +137,7 @@ int main(int argc, char* argv[])
 
 	// Read config files
 	GPU_Parameter_Set* gpu_params = new GPU_Parameter_Set;
-	printf("Reading GPU Configurations...");
+	PRINT_MESSAGE("Reading GPU Configurations...")
 	read_gpu_configuration_parameters(gpu_config_file_path, gpu_params);
 	
 	if (!kernel_config_file_path.empty()) {

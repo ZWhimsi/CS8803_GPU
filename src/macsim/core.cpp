@@ -1,5 +1,5 @@
 #include "core.h"
-#include "trace_reader.h"
+#include "trace.h"
 #include "macsim.h"
 #include <cstring>
 #include <algorithm>

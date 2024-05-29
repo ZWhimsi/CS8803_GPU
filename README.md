@@ -50,10 +50,10 @@ cumulative scores are within the *Cumulative LLS cutoff* (starting from the begi
 scheduled by the underlying scheduler (Round Robin in this case). the LLS scores are assigned to warps by 
 using a feedback mechanism from the cache.
 
-In our implementation, for each warp(`trace_reader_main.h::warp_s`), we keep an instance of the 
+In our implementation, for each warp(`macsim.h::warp_s`), we keep an instance of the 
 `ccws_vta.h::ccws_vta` class to stimulate that warp's VTA entry. VTA class simulates a fully-associative 
 [victim cache](https://en.wikipedia.org/wiki/Victim_cache) with LRU replacement policy and is used to 
-store the evicted tags from L1 cache. We also use a variable in `trace_reader_main.h::warp_s` to keep 
+store the evicted tags from L1 cache. We also use a variable in `macsim.h::warp_s` to keep 
 track of a warp's LLS score and assign its value to the base LLS score when the warp is dispatched.
 
 To implement CCWS your code must do the following things:
@@ -143,7 +143,7 @@ benchmarks are captured using [NVBit](https://research.nvidia.com/publication/20
 The traces contain information about warps and the instructions they execute.
 
 ### Macsim Architecture
-Macsim simulator consists of a trace reader (`trace_reader.cpp`), several GPU cores (`core.cpp`), L1/L2 caches (`cache.cpp`) 
+Macsim simulator consists of a trace reader (`trace.h`), several GPU cores (`core.cpp`), L1/L2 caches (`cache.cpp`) 
 and a basic fixed latency memory (`ram.cpp`). Each core has a local L1 cache and all cores share an L2 cache. When we 
 invoke macsim with a `kernel_config.txt` which contains the trace metadata, macsim retrieves information about how many 
 kernels need to be executed and trace file for each warp. During simulation, macsim launches the kernels in a trace 

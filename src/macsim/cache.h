@@ -33,7 +33,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include <string>
 
-#include "global_types.h"
+#include "sim_defs.h"
 #include "macsim.h"
 #include "core.h"
 
