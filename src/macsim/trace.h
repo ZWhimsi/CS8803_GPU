@@ -5,6 +5,7 @@
 #include <queue>
 #include "zlib.h"
 #include "sim_defs.h"
+#include <algorithm>
 
 using namespace std;
 
