@@ -73,7 +73,7 @@ To implement CCWS your code must do the following things:
     - `Cum_LLS_Cutoff = Num_Active_Warps * Base_Locality_Score`
     - *VTA_Hits_Total* is the number of VTA hits across all warps on the core.
     - *K_Throttle* is the throttling parameter (value is given in `macsim.h`).
-    - *Num_Active_Warps* is the number of warps in the dispatch queue.
+    - *Num_Active_Warps* is the total number of warps assigned to the core, inluding: dispatched warps, suspended warps, and the running warp.
     - *Base_Locality_Score* is the base locality score (value is given in `macsim.h`).
 
 > Note: LLS score cannot be less than the Base LLS score for any warp at any point in time, you need to enforce this
