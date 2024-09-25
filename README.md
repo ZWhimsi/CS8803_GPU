@@ -1,4 +1,4 @@
-# OMSCS-CS8803 Project-3: GPU Warp Scheduling
+# CS8803 Project-3: GPU Warp Scheduling
 In this assignment, you will implement different warp scheduling algorithms on a GPU simulator which will give you an 
 opportunity to learn how warp scheduling algorithms affect the performance of a GPU program.
 
