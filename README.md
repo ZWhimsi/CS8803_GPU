@@ -130,11 +130,10 @@ In this task, you'll write a report containing the following things:
 > For Task-2 We will use the *MISSES_PER_1000_INSTR* values from the logs to award points. 
 
 ## Submission Guidelines
-- You must submit all the deliverables on GradeScope (Which can be accessed through the Canvas menu).
+- Submit your deliverables to the appropriate locations, with the source code and report submitted separately:
 - **Deliverables**
-  - A tar file containing all the code. Use the `make submit` command to generate the tar file.
-  - A PDF report.
-
+  - To Gradescope: Upload a tar file containing all your code. Use the make submit command to generate the tar file.
+  - To Assignments -> Project 3: Upload your PDF report.
 ---
 ## Macsim Simulator
 This simulator is a stripped-down version of the original [Macsim](https://sites.gatech.edu/hparch/software/#macsim) simulator 
