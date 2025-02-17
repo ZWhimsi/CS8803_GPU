@@ -1,4 +1,4 @@
-# CS8803 Project-3: GPU Warp Scheduling
+# OMSCS-CS8803 Project-3: GPU Warp Scheduling
 In this assignment, you will implement different warp scheduling algorithms on a GPU simulator which will give you an 
 opportunity to learn how warp scheduling algorithms affect the performance of a GPU program.
 
@@ -73,7 +73,7 @@ To implement CCWS your code must do the following things:
     - `Cum_LLS_Cutoff = Num_Active_Warps * Base_Locality_Score`
     - *VTA_Hits_Total* is the number of VTA hits across all warps on the core.
     - *K_Throttle* is the throttling parameter (value is given in `macsim.h`).
-    - *Num_Active_Warps* is the total number of warps assigned to the core, inluding: dispatched warps, suspended warps, and the running warp.
+    - *Num_Active_Warps* is the number of warps in the dispatch queue.
     - *Base_Locality_Score* is the base locality score (value is given in `macsim.h`).
 
 > Note: LLS score cannot be less than the Base LLS score for any warp at any point in time, you need to enforce this
@@ -116,9 +116,9 @@ In this task, you'll write a report containing the following things:
 > Reports may contribute bonus points to compensate for any potential loss in grades for Task 1 and Task 2.
 
 ## Grading
-- The assignment is worth **25 points** and is divided into 3 components, Task-1, Task-2 and a report.
+- The assignment is worth **15 points** and is divided into 3 components, Task-1, Task-2 and a report.
 - **0 points** if you don't submit anything by the deadline.
-- **Task-1 is worth 10 points**, **Task-2 is worth 13 points**, and the **report is worth 2 points**.
+- **Task-1 is worth 6 points**, **Task-2 is worth 7 points**, and the **report is worth 2 points**.
 - Rubric for Task-1 and Task-2:
   - **+50% points**: if you submit a code that compiles and runs without any errors/warnings but does **NOT** match
     the stats within the acceptable tolerance.
@@ -130,10 +130,11 @@ In this task, you'll write a report containing the following things:
 > For Task-2 We will use the *MISSES_PER_1000_INSTR* values from the logs to award points. 
 
 ## Submission Guidelines
-- Submit your deliverables to the appropriate locations, with the source code and report submitted separately:
+- You must submit all the deliverables on GradeScope (Which can be accessed through the Canvas menu).
 - **Deliverables**
-  - To Gradescope: Upload a tar file containing all your code. Use the make submit command to generate the tar file.
-  - To Assignments -> Project 3: Upload your PDF report.
+  - A tar file containing all the code. Use the `make submit` command to generate the tar file.
+  - A PDF report.
+
 ---
 ## Macsim Simulator
 This simulator is a stripped-down version of the original [Macsim](https://sites.gatech.edu/hparch/software/#macsim) simulator 
