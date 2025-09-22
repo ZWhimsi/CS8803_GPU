@@ -208,6 +208,9 @@ __global__ void BitonicSort_global(int* data, int j, int k, int size){
   if (i < partnerGlobalIdx && i < size && partnerGlobalIdx < size) {
     bool ascending = (i & k) == 0; 
     
+    // OPTIMIZATION 8: Prefetch data for better cache utilization
+    __builtin_prefetch(&data[partnerGlobalIdx], 1, 0);
+    
     // OPTIMIZATION 4: Coalesced memory access pattern
     // Threads in the same warp access consecutive memory locations
     int val1 = data[i];
@@ -288,6 +291,15 @@ CUDA_CHECK(cudaMalloc(&d_arr, size * sizeof(DTYPE)));
 // OPTIMIZATION 5: Create CUDA stream for async operations
 cudaStream_t stream;
 CUDA_CHECK(cudaStreamCreate(&stream));
+
+// OPTIMIZATION 7: Set L2 cache persistence for better memory access
+cudaStreamAttrValue stream_attr;
+stream_attr.accessPolicyWindow.base_ptr = (void*)d_arr;
+stream_attr.accessPolicyWindow.num_bytes = size * sizeof(DTYPE);
+stream_attr.accessPolicyWindow.hitRatio = 1.0f;
+stream_attr.accessPolicyWindow.hitProp = cudaAccessPropertyPersisting;
+stream_attr.accessPolicyWindow.missProp = cudaAccessPropertyStreaming;
+cudaStreamSetAttribute(stream, cudaStreamAttributeAccessPolicyWindow, &stream_attr);
 
 // Copy data from host to device with pinned memory (2-3x faster)
 LOG_DEBUG("Copying data from host to device with pinned memory");
