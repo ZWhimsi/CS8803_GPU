@@ -1,4 +1,4 @@
-#define TILE_WIDTH 4
+#define TILE_WIDTH 16 //should be 16 to be compatible with 16*16 and fast on big matrices
 
 // System includes
 #include <stdio.h>
@@ -88,7 +88,8 @@ __global__ void MatrixMulCUDA(float* C, float* A, float* B, int matrixWidth)
         for(int k = 0; k < TILE_WIDTH; k++) {
             dot_product += shared_A[ty][k] * shared_B[k][tx];
         }
-        __syncthreads();   // Synchronize threads of a block
+        // Synchronize threads 
+        __syncthreads();   
     }
 
     if(row < matrixWidth && column < matrixWidth) {
