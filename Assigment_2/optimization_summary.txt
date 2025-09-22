@@ -120,3 +120,4 @@ data[partnerGlobalIdx] = val1;
 - Teacher's approach is correctly implemented
 - Focus on the biggest bottlenecks: kernel time and memory transfer
 - H100 has much higher memory bandwidth than A100
+

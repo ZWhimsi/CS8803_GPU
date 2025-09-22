@@ -1,17 +1,9 @@
-[mfajeau3@atl1-1-03-011-3-0 Assigment_2]$ git pull origin main
-From github.com:ZWhimsi/CS8803_GPU
- * branch            main       -> FETCH_HEAD
-Updating 326d1a0..8dffe12
-Fast-forward
- Assigment_2/kernel_backup.cu | 6 +++---
- 1 file changed, 3 insertions(+), 3 deletions(-)
-[mfajeau3@atl1-1-03-011-3-0 Assigment_2]$ nvcc kernel_backup.cu
-nvcc warning : Support for offline compilation for architectures prior to '<compute/sm/lto>_75' will be removed in a future release (Use -Wno-deprecated-gpu-targets to suppress warning).
+gets to suppress warning).
 [mfajeau3@atl1-1-03-011-3-0 Assigment_2]$ ./a.out 134217728
 [INFO] Starting bitonic sort with array size: 134217728
 [STAGE] Generating random array
 [INFO] Original array:
-  [128, 428, 898, 51, 390, 727, 837, 63, 337, 364, 351, 86, 25, 335, 93, 630, 895, 574, 669, 751... (134217708 more elements)]
+  [421, 911, 905, 242, 730, 42, 987, 391, 283, 285, 250, 305, 730, 641, 327, 8, 350, 760, 604, 125... (134217708 more elements)]
 [STAGE] Setting up GPU memory and data transfer
 [DEBUG] Allocating GPU memory for 134217728 elements
 [DEBUG] Copying data from host to device with pinned memory
@@ -20,7 +12,6 @@ nvcc warning : Support for offline compilation for architectures prior to '<comp
 [INFO] Launch configuration: 262144 blocks, 512 threads per block
 [DEBUG] Shared memory size: 2048 bytes
 [DEBUG] Using global memory kernel for large array
-[ERROR] Global memory kernel launch failed: invalid argument
 [INFO] Global memory bitonic sort completed in 378 steps
 [DEBUG] Shared memory kernel completed
 [INFO] Shared memory bitonic sort completed
@@ -33,13 +24,12 @@ nvcc warning : Support for offline compilation for architectures prior to '<comp
 [INFO] FUNCTIONAL SUCCESS
 FUNCTIONAL SUCCESS
 Array size         : 134217728
-CPU Sort Time (ms) : 21470.015625
-GPU Sort Time (ms) : 515.568970
-GPU Sort Speed     : 260.329346 million elements per second
+CPU Sort Time (ms) : 22937.033203
+GPU Sort Time (ms) : 481.849182
+GPU Sort Speed     : 278.547180 million elements per second
 PERF PASSING
-GPU Sort is  41x faster than CPU !!!
-H2D Transfer Time (ms): 212.701340
-Kernel Time (ms)      : 185.655334
-D2H Transfer Time (ms): 117.212288
-[mfajeau3@atl1-1-03-011-3-0 Assigment_2]$ ^C
-[mfajeau3@atl1-1-03-011-3-0 Assigment_2]$ 
+GPU Sort is  47x faster than CPU !!!
+H2D Transfer Time (ms): 212.551971
+Kernel Time (ms)      : 152.210236
+D2H Transfer Time (ms): 117.086975
+[mfajeau3@atl1-1-03-011-3-0 Assigment_2]

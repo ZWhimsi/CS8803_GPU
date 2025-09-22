@@ -1,4 +1,3 @@
-%%writefile kernel.cu
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -208,17 +207,11 @@ __global__ void BitonicSort_global(int* data, int j, int k, int size){
   if (i < partnerGlobalIdx && i < size && partnerGlobalIdx < size) {
     bool ascending = (i & k) == 0; 
     
-    // OPTIMIZATION 8: Use L2 cache hints for better utilization
-    // Note: __builtin_prefetch is not available in CUDA device code
-    
-    // OPTIMIZATION 4: Coalesced memory access pattern
-    // Threads in the same warp access consecutive memory locations
     int val1 = data[i];
     int val2 = data[partnerGlobalIdx];
 
     // Compare and swap if needed
     if ((val1 > val2) == ascending) {
-      // Coalesced write back
       data[i] = val2;
       data[partnerGlobalIdx] = val1;
     }
@@ -279,23 +272,13 @@ LOG_STAGE("Setting up GPU memory and data transfer");
 // Declare the device pointer
 DTYPE* d_arr;
 
-// OPTIMIZATION 1: Use pinned memory for faster transfers
-DTYPE* h_arr_pinned;
-CUDA_CHECK(cudaMallocHost(&h_arr_pinned, size * sizeof(DTYPE)));
-memcpy(h_arr_pinned, arrCpu, size * sizeof(DTYPE));
-
-// OPTIMIZATION 5: Create CUDA stream for async operations (declare early for D2H use)
-cudaStream_t stream;
-CUDA_CHECK(cudaStreamCreate(&stream));
-
 // Allocate memory on the device
 LOG_DEBUG("Allocating GPU memory for %d elements", size);
 CUDA_CHECK(cudaMalloc(&d_arr, size * sizeof(DTYPE)));
 
-// Copy data from host to device with pinned memory (2-3x faster)
-LOG_DEBUG("Copying data from host to device with pinned memory");
-CUDA_CHECK(cudaMemcpyAsync(d_arr, h_arr_pinned, size * sizeof(DTYPE), cudaMemcpyHostToDevice, stream));
-CUDA_CHECK(cudaStreamSynchronize(stream));
+// Copy data from host to device (including padded elements)
+LOG_DEBUG("Copying data from host to device");
+CUDA_CHECK(cudaMemcpy(d_arr, arrCpu, size * sizeof(DTYPE), cudaMemcpyHostToDevice));
 LOG_INFO("Data successfully copied to GPU");
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
@@ -309,8 +292,7 @@ LOG_INFO("Data successfully copied to GPU");
 
 // Perform bitonic sort on GPU using shared memory
 LOG_STAGE("Starting shared memory bitonic sort on GPU");
-// OPTIMIZATION 3: Better launch configuration for H100
-int threadsPerBlock = 512;  // Optimal based on H100 performance analysis
+int threadsPerBlock = 256;
 int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
 LOG_INFO("Launch configuration: %d blocks, %d threads per block", blocksPerGrid, threadsPerBlock);
 
@@ -320,7 +302,7 @@ LOG_DEBUG("Shared memory size: %zu bytes", sharedMemSize);
 
 // Use smart hybrid approach: shared memory for small arrays, global memory for large arrays
 int step_count = 0;
-if (size <= 512) {  // OPTIMIZATION 6: Use shared memory for arrays up to 512 elements
+if (size <= 256) {
     // Small arrays: Use shared memory kernel (benefits from shared memory)
     LOG_DEBUG("Using shared memory kernel for small array");
     for (int k = 2; k <= size; k <<= 1) {
@@ -402,10 +384,7 @@ LOG_INFO("Shared memory bitonic sort completed");
 
 // Transfer sorted data back to host (copied to arrSortedGpu)
 LOG_STAGE("Transferring sorted data back to host");
-// OPTIMIZATION 2: Use pinned memory for D2H transfer with async
-CUDA_CHECK(cudaMemcpyAsync(h_arr_pinned, d_arr, size * sizeof(DTYPE), cudaMemcpyDeviceToHost, stream));
-CUDA_CHECK(cudaStreamSynchronize(stream));
-memcpy(arrSortedGpu, h_arr_pinned, size * sizeof(DTYPE));
+CUDA_CHECK(cudaMemcpy(arrSortedGpu, d_arr, size * sizeof(DTYPE), cudaMemcpyDeviceToHost));
 LOG_INFO("Sorted array:");
 printArray(arrSortedGpu, size, "  ");
 
@@ -455,8 +434,6 @@ printArray(arrSortedGpu, size, "  ");
 
     // Clean up GPU memory
     CUDA_CHECK(cudaFree(d_arr));
-    CUDA_CHECK(cudaFreeHost(h_arr_pinned));
-    CUDA_CHECK(cudaStreamDestroy(stream));
     
     free(arrCpu);
     free(arrSortedGpu);
