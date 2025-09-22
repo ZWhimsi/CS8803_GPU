@@ -1,410 +1,95 @@
-[INFO] Starting bitonic sort with array size: 134217728
-[STAGE] Generating random array
-[INFO] Original array:
-  [519, 730, 58, 628, 204, 527, 240, 458, 595, 372, 488, 658, 453, 102, 511, 318, 948, 283, 676, 449... (134217708 more elements)]
-[STAGE] Setting up GPU memory and data transfer
-[DEBUG] Allocating GPU memory for 134217728 elements
-[DEBUG] Copying data from host to device
-[INFO] Data successfully copied to GPU
-[STAGE] Starting shared memory bitonic sort on GPU
-[INFO] Launch configuration: 262144 blocks, 512 threads per block
-[DEBUG] Shared memory size: 2048 bytes
-[DEBUG] Using teacher's shared memory optimization for large array
-[DEBUG] Step 1: Using shared memory kernel (sequenceLength=1, stage=2)
-[DEBUG] Step 2: Using shared memory kernel (sequenceLength=2, stage=4)
-[DEBUG] Step 3: Using shared memory kernel (sequenceLength=1, stage=4)
-[DEBUG] Step 4: Using shared memory kernel (sequenceLength=4, stage=8)
-[DEBUG] Step 5: Using shared memory kernel (sequenceLength=2, stage=8)
-[DEBUG] Step 6: Using shared memory kernel (sequenceLength=1, stage=8)
-[DEBUG] Step 7: Using shared memory kernel (sequenceLength=8, stage=16)
-[DEBUG] Step 8: Using shared memory kernel (sequenceLength=4, stage=16)
-[DEBUG] Step 9: Using shared memory kernel (sequenceLength=2, stage=16)
-[DEBUG] Step 10: Using shared memory kernel (sequenceLength=1, stage=16)
-[DEBUG] Step 11: Using shared memory kernel (sequenceLength=16, stage=32)
-[DEBUG] Step 12: Using shared memory kernel (sequenceLength=8, stage=32)
-[DEBUG] Step 13: Using shared memory kernel (sequenceLength=4, stage=32)
-[DEBUG] Step 14: Using shared memory kernel (sequenceLength=2, stage=32)
-[DEBUG] Step 15: Using shared memory kernel (sequenceLength=1, stage=32)
-[DEBUG] Step 16: Using shared memory kernel (sequenceLength=32, stage=64)
-[DEBUG] Step 17: Using shared memory kernel (sequenceLength=16, stage=64)
-[DEBUG] Step 18: Using shared memory kernel (sequenceLength=8, stage=64)
-[DEBUG] Step 19: Using shared memory kernel (sequenceLength=4, stage=64)
-[DEBUG] Step 20: Using shared memory kernel (sequenceLength=2, stage=64)
-[DEBUG] Step 21: Using shared memory kernel (sequenceLength=1, stage=64)
-[DEBUG] Step 22: Using shared memory kernel (sequenceLength=64, stage=128)
-[DEBUG] Step 23: Using shared memory kernel (sequenceLength=32, stage=128)
-[DEBUG] Step 24: Using shared memory kernel (sequenceLength=16, stage=128)
-[DEBUG] Step 25: Using shared memory kernel (sequenceLength=8, stage=128)
-[DEBUG] Step 26: Using shared memory kernel (sequenceLength=4, stage=128)
-[DEBUG] Step 27: Using shared memory kernel (sequenceLength=2, stage=128)
-[DEBUG] Step 28: Using shared memory kernel (sequenceLength=1, stage=128)
-[DEBUG] Step 29: Using shared memory kernel (sequenceLength=128, stage=256)
-[DEBUG] Step 30: Using shared memory kernel (sequenceLength=64, stage=256)
-[DEBUG] Step 31: Using shared memory kernel (sequenceLength=32, stage=256)
-[DEBUG] Step 32: Using shared memory kernel (sequenceLength=16, stage=256)
-[DEBUG] Step 33: Using shared memory kernel (sequenceLength=8, stage=256)
-[DEBUG] Step 34: Using shared memory kernel (sequenceLength=4, stage=256)
-[DEBUG] Step 35: Using shared memory kernel (sequenceLength=2, stage=256)
-[DEBUG] Step 36: Using shared memory kernel (sequenceLength=1, stage=256)
-[DEBUG] Step 37: Using shared memory kernel (sequenceLength=256, stage=512)
-[DEBUG] Step 38: Using shared memory kernel (sequenceLength=128, stage=512)
-[DEBUG] Step 39: Using shared memory kernel (sequenceLength=64, stage=512)
-[DEBUG] Step 40: Using shared memory kernel (sequenceLength=32, stage=512)
-[DEBUG] Step 41: Using shared memory kernel (sequenceLength=16, stage=512)
-[DEBUG] Step 42: Using shared memory kernel (sequenceLength=8, stage=512)
-[DEBUG] Step 43: Using shared memory kernel (sequenceLength=4, stage=512)
-[DEBUG] Step 44: Using shared memory kernel (sequenceLength=2, stage=512)
-[DEBUG] Step 45: Using shared memory kernel (sequenceLength=1, stage=512)
-[DEBUG] Step 46: Using global memory kernel (sequenceLength=512, stage=1024)
-[DEBUG] Step 47: Using shared memory kernel (sequenceLength=256, stage=1024)
-[DEBUG] Step 48: Using shared memory kernel (sequenceLength=128, stage=1024)
-[DEBUG] Step 49: Using shared memory kernel (sequenceLength=64, stage=1024)
-[DEBUG] Step 50: Using shared memory kernel (sequenceLength=32, stage=1024)
-[DEBUG] Step 51: Using shared memory kernel (sequenceLength=16, stage=1024)
-[DEBUG] Step 52: Using shared memory kernel (sequenceLength=8, stage=1024)
-[DEBUG] Step 53: Using shared memory kernel (sequenceLength=4, stage=1024)
-[DEBUG] Step 54: Using shared memory kernel (sequenceLength=2, stage=1024)
-[DEBUG] Step 55: Using shared memory kernel (sequenceLength=1, stage=1024)
-[DEBUG] Step 56: Using global memory kernel (sequenceLength=1024, stage=2048)
-[DEBUG] Step 57: Using global memory kernel (sequenceLength=512, stage=2048)
-[DEBUG] Step 58: Using shared memory kernel (sequenceLength=256, stage=2048)
-[DEBUG] Step 59: Using shared memory kernel (sequenceLength=128, stage=2048)
-[DEBUG] Step 60: Using shared memory kernel (sequenceLength=64, stage=2048)
-[DEBUG] Step 61: Using shared memory kernel (sequenceLength=32, stage=2048)
-[DEBUG] Step 62: Using shared memory kernel (sequenceLength=16, stage=2048)
-[DEBUG] Step 63: Using shared memory kernel (sequenceLength=8, stage=2048)
-[DEBUG] Step 64: Using shared memory kernel (sequenceLength=4, stage=2048)
-[DEBUG] Step 65: Using shared memory kernel (sequenceLength=2, stage=2048)
-[DEBUG] Step 66: Using shared memory kernel (sequenceLength=1, stage=2048)
-[DEBUG] Step 67: Using global memory kernel (sequenceLength=2048, stage=4096)
-[DEBUG] Step 68: Using global memory kernel (sequenceLength=1024, stage=4096)
-[DEBUG] Step 69: Using global memory kernel (sequenceLength=512, stage=4096)
-[DEBUG] Step 70: Using shared memory kernel (sequenceLength=256, stage=4096)
-[DEBUG] Step 71: Using shared memory kernel (sequenceLength=128, stage=4096)
-[DEBUG] Step 72: Using shared memory kernel (sequenceLength=64, stage=4096)
-[DEBUG] Step 73: Using shared memory kernel (sequenceLength=32, stage=4096)
-[DEBUG] Step 74: Using shared memory kernel (sequenceLength=16, stage=4096)
-[DEBUG] Step 75: Using shared memory kernel (sequenceLength=8, stage=4096)
-[DEBUG] Step 76: Using shared memory kernel (sequenceLength=4, stage=4096)
-[DEBUG] Step 77: Using shared memory kernel (sequenceLength=2, stage=4096)
-[DEBUG] Step 78: Using shared memory kernel (sequenceLength=1, stage=4096)
-[DEBUG] Step 79: Using global memory kernel (sequenceLength=4096, stage=8192)
-[DEBUG] Step 80: Using global memory kernel (sequenceLength=2048, stage=8192)
-[DEBUG] Step 81: Using global memory kernel (sequenceLength=1024, stage=8192)
-[DEBUG] Step 82: Using global memory kernel (sequenceLength=512, stage=8192)
-[DEBUG] Step 83: Using shared memory kernel (sequenceLength=256, stage=8192)
-[DEBUG] Step 84: Using shared memory kernel (sequenceLength=128, stage=8192)
-[DEBUG] Step 85: Using shared memory kernel (sequenceLength=64, stage=8192)
-[DEBUG] Step 86: Using shared memory kernel (sequenceLength=32, stage=8192)
-[DEBUG] Step 87: Using shared memory kernel (sequenceLength=16, stage=8192)
-[DEBUG] Step 88: Using shared memory kernel (sequenceLength=8, stage=8192)
-[DEBUG] Step 89: Using shared memory kernel (sequenceLength=4, stage=8192)
-[DEBUG] Step 90: Using shared memory kernel (sequenceLength=2, stage=8192)
-[DEBUG] Step 91: Using shared memory kernel (sequenceLength=1, stage=8192)
-[DEBUG] Step 92: Using global memory kernel (sequenceLength=8192, stage=16384)
-[DEBUG] Step 93: Using global memory kernel (sequenceLength=4096, stage=16384)
-[DEBUG] Step 94: Using global memory kernel (sequenceLength=2048, stage=16384)
-[DEBUG] Step 95: Using global memory kernel (sequenceLength=1024, stage=16384)
-[DEBUG] Step 96: Using global memory kernel (sequenceLength=512, stage=16384)
-[DEBUG] Step 97: Using shared memory kernel (sequenceLength=256, stage=16384)
-[DEBUG] Step 98: Using shared memory kernel (sequenceLength=128, stage=16384)
-[DEBUG] Step 99: Using shared memory kernel (sequenceLength=64, stage=16384)
-[DEBUG] Step 100: Using shared memory kernel (sequenceLength=32, stage=16384)
-[DEBUG] Step 101: Using shared memory kernel (sequenceLength=16, stage=16384)
-[DEBUG] Step 102: Using shared memory kernel (sequenceLength=8, stage=16384)
-[DEBUG] Step 103: Using shared memory kernel (sequenceLength=4, stage=16384)
-[DEBUG] Step 104: Using shared memory kernel (sequenceLength=2, stage=16384)
-[DEBUG] Step 105: Using shared memory kernel (sequenceLength=1, stage=16384)
-[DEBUG] Step 106: Using global memory kernel (sequenceLength=16384, stage=32768)
-[DEBUG] Step 107: Using global memory kernel (sequenceLength=8192, stage=32768)
-[DEBUG] Step 108: Using global memory kernel (sequenceLength=4096, stage=32768)
-[DEBUG] Step 109: Using global memory kernel (sequenceLength=2048, stage=32768)
-[DEBUG] Step 110: Using global memory kernel (sequenceLength=1024, stage=32768)
-[DEBUG] Step 111: Using global memory kernel (sequenceLength=512, stage=32768)
-[DEBUG] Step 112: Using shared memory kernel (sequenceLength=256, stage=32768)
-[DEBUG] Step 113: Using shared memory kernel (sequenceLength=128, stage=32768)
-[DEBUG] Step 114: Using shared memory kernel (sequenceLength=64, stage=32768)
-[DEBUG] Step 115: Using shared memory kernel (sequenceLength=32, stage=32768)
-[DEBUG] Step 116: Using shared memory kernel (sequenceLength=16, stage=32768)
-[DEBUG] Step 117: Using shared memory kernel (sequenceLength=8, stage=32768)
-[DEBUG] Step 118: Using shared memory kernel (sequenceLength=4, stage=32768)
-[DEBUG] Step 119: Using shared memory kernel (sequenceLength=2, stage=32768)
-[DEBUG] Step 120: Using shared memory kernel (sequenceLength=1, stage=32768)
-[DEBUG] Step 121: Using global memory kernel (sequenceLength=32768, stage=65536)
-[DEBUG] Step 122: Using global memory kernel (sequenceLength=16384, stage=65536)
-[DEBUG] Step 123: Using global memory kernel (sequenceLength=8192, stage=65536)
-[DEBUG] Step 124: Using global memory kernel (sequenceLength=4096, stage=65536)
-[DEBUG] Step 125: Using global memory kernel (sequenceLength=2048, stage=65536)
-[DEBUG] Step 126: Using global memory kernel (sequenceLength=1024, stage=65536)
-[DEBUG] Step 127: Using global memory kernel (sequenceLength=512, stage=65536)
-[DEBUG] Step 128: Using shared memory kernel (sequenceLength=256, stage=65536)
-[DEBUG] Step 129: Using shared memory kernel (sequenceLength=128, stage=65536)
-[DEBUG] Step 130: Using shared memory kernel (sequenceLength=64, stage=65536)
-[DEBUG] Step 131: Using shared memory kernel (sequenceLength=32, stage=65536)
-[DEBUG] Step 132: Using shared memory kernel (sequenceLength=16, stage=65536)
-[DEBUG] Step 133: Using shared memory kernel (sequenceLength=8, stage=65536)
-[DEBUG] Step 134: Using shared memory kernel (sequenceLength=4, stage=65536)
-[DEBUG] Step 135: Using shared memory kernel (sequenceLength=2, stage=65536)
-[DEBUG] Step 136: Using shared memory kernel (sequenceLength=1, stage=65536)
-[DEBUG] Step 137: Using global memory kernel (sequenceLength=65536, stage=131072)
-[DEBUG] Step 138: Using global memory kernel (sequenceLength=32768, stage=131072)
-[DEBUG] Step 139: Using global memory kernel (sequenceLength=16384, stage=131072)
-[DEBUG] Step 140: Using global memory kernel (sequenceLength=8192, stage=131072)
-[DEBUG] Step 141: Using global memory kernel (sequenceLength=4096, stage=131072)
-[DEBUG] Step 142: Using global memory kernel (sequenceLength=2048, stage=131072)
-[DEBUG] Step 143: Using global memory kernel (sequenceLength=1024, stage=131072)
-[DEBUG] Step 144: Using global memory kernel (sequenceLength=512, stage=131072)
-[DEBUG] Step 145: Using shared memory kernel (sequenceLength=256, stage=131072)
-[DEBUG] Step 146: Using shared memory kernel (sequenceLength=128, stage=131072)
-[DEBUG] Step 147: Using shared memory kernel (sequenceLength=64, stage=131072)
-[DEBUG] Step 148: Using shared memory kernel (sequenceLength=32, stage=131072)
-[DEBUG] Step 149: Using shared memory kernel (sequenceLength=16, stage=131072)
-[DEBUG] Step 150: Using shared memory kernel (sequenceLength=8, stage=131072)
-[DEBUG] Step 151: Using shared memory kernel (sequenceLength=4, stage=131072)
-[DEBUG] Step 152: Using shared memory kernel (sequenceLength=2, stage=131072)
-[DEBUG] Step 153: Using shared memory kernel (sequenceLength=1, stage=131072)
-[DEBUG] Step 154: Using global memory kernel (sequenceLength=131072, stage=262144)
-[DEBUG] Step 155: Using global memory kernel (sequenceLength=65536, stage=262144)
-[DEBUG] Step 156: Using global memory kernel (sequenceLength=32768, stage=262144)
-[DEBUG] Step 157: Using global memory kernel (sequenceLength=16384, stage=262144)
-[DEBUG] Step 158: Using global memory kernel (sequenceLength=8192, stage=262144)
-[DEBUG] Step 159: Using global memory kernel (sequenceLength=4096, stage=262144)
-[DEBUG] Step 160: Using global memory kernel (sequenceLength=2048, stage=262144)
-[DEBUG] Step 161: Using global memory kernel (sequenceLength=1024, stage=262144)
-[DEBUG] Step 162: Using global memory kernel (sequenceLength=512, stage=262144)
-[DEBUG] Step 163: Using shared memory kernel (sequenceLength=256, stage=262144)
-[DEBUG] Step 164: Using shared memory kernel (sequenceLength=128, stage=262144)
-[DEBUG] Step 165: Using shared memory kernel (sequenceLength=64, stage=262144)
-[DEBUG] Step 166: Using shared memory kernel (sequenceLength=32, stage=262144)
-[DEBUG] Step 167: Using shared memory kernel (sequenceLength=16, stage=262144)
-[DEBUG] Step 168: Using shared memory kernel (sequenceLength=8, stage=262144)
-[DEBUG] Step 169: Using shared memory kernel (sequenceLength=4, stage=262144)
-[DEBUG] Step 170: Using shared memory kernel (sequenceLength=2, stage=262144)
-[DEBUG] Step 171: Using shared memory kernel (sequenceLength=1, stage=262144)
-[DEBUG] Step 172: Using global memory kernel (sequenceLength=262144, stage=524288)
-[DEBUG] Step 173: Using global memory kernel (sequenceLength=131072, stage=524288)
-[DEBUG] Step 174: Using global memory kernel (sequenceLength=65536, stage=524288)
-[DEBUG] Step 175: Using global memory kernel (sequenceLength=32768, stage=524288)
-[DEBUG] Step 176: Using global memory kernel (sequenceLength=16384, stage=524288)
-[DEBUG] Step 177: Using global memory kernel (sequenceLength=8192, stage=524288)
-[DEBUG] Step 178: Using global memory kernel (sequenceLength=4096, stage=524288)
-[DEBUG] Step 179: Using global memory kernel (sequenceLength=2048, stage=524288)
-[DEBUG] Step 180: Using global memory kernel (sequenceLength=1024, stage=524288)
-[DEBUG] Step 181: Using global memory kernel (sequenceLength=512, stage=524288)
-[DEBUG] Step 182: Using shared memory kernel (sequenceLength=256, stage=524288)
-[DEBUG] Step 183: Using shared memory kernel (sequenceLength=128, stage=524288)
-[DEBUG] Step 184: Using shared memory kernel (sequenceLength=64, stage=524288)
-[DEBUG] Step 185: Using shared memory kernel (sequenceLength=32, stage=524288)
-[DEBUG] Step 186: Using shared memory kernel (sequenceLength=16, stage=524288)
-[DEBUG] Step 187: Using shared memory kernel (sequenceLength=8, stage=524288)
-[DEBUG] Step 188: Using shared memory kernel (sequenceLength=4, stage=524288)
-[DEBUG] Step 189: Using shared memory kernel (sequenceLength=2, stage=524288)
-[DEBUG] Step 190: Using shared memory kernel (sequenceLength=1, stage=524288)
-[DEBUG] Step 191: Using global memory kernel (sequenceLength=524288, stage=1048576)
-[DEBUG] Step 192: Using global memory kernel (sequenceLength=262144, stage=1048576)
-[DEBUG] Step 193: Using global memory kernel (sequenceLength=131072, stage=1048576)
-[DEBUG] Step 194: Using global memory kernel (sequenceLength=65536, stage=1048576)
-[DEBUG] Step 195: Using global memory kernel (sequenceLength=32768, stage=1048576)
-[DEBUG] Step 196: Using global memory kernel (sequenceLength=16384, stage=1048576)
-[DEBUG] Step 197: Using global memory kernel (sequenceLength=8192, stage=1048576)
-[DEBUG] Step 198: Using global memory kernel (sequenceLength=4096, stage=1048576)
-[DEBUG] Step 199: Using global memory kernel (sequenceLength=2048, stage=1048576)
-[DEBUG] Step 200: Using global memory kernel (sequenceLength=1024, stage=1048576)
-[DEBUG] Step 201: Using global memory kernel (sequenceLength=512, stage=1048576)
-[DEBUG] Step 202: Using shared memory kernel (sequenceLength=256, stage=1048576)
-[DEBUG] Step 203: Using shared memory kernel (sequenceLength=128, stage=1048576)
-[DEBUG] Step 204: Using shared memory kernel (sequenceLength=64, stage=1048576)
-[DEBUG] Step 205: Using shared memory kernel (sequenceLength=32, stage=1048576)
-[DEBUG] Step 206: Using shared memory kernel (sequenceLength=16, stage=1048576)
-[DEBUG] Step 207: Using shared memory kernel (sequenceLength=8, stage=1048576)
-[DEBUG] Step 208: Using shared memory kernel (sequenceLength=4, stage=1048576)
-[DEBUG] Step 209: Using shared memory kernel (sequenceLength=2, stage=1048576)
-[DEBUG] Step 210: Using shared memory kernel (sequenceLength=1, stage=1048576)
-[DEBUG] Step 211: Using global memory kernel (sequenceLength=1048576, stage=2097152)
-[DEBUG] Step 212: Using global memory kernel (sequenceLength=524288, stage=2097152)
-[DEBUG] Step 213: Using global memory kernel (sequenceLength=262144, stage=2097152)
-[DEBUG] Step 214: Using global memory kernel (sequenceLength=131072, stage=2097152)
-[DEBUG] Step 215: Using global memory kernel (sequenceLength=65536, stage=2097152)
-[DEBUG] Step 216: Using global memory kernel (sequenceLength=32768, stage=2097152)
-[DEBUG] Step 217: Using global memory kernel (sequenceLength=16384, stage=2097152)
-[DEBUG] Step 218: Using global memory kernel (sequenceLength=8192, stage=2097152)
-[DEBUG] Step 219: Using global memory kernel (sequenceLength=4096, stage=2097152)
-[DEBUG] Step 220: Using global memory kernel (sequenceLength=2048, stage=2097152)
-[DEBUG] Step 221: Using global memory kernel (sequenceLength=1024, stage=2097152)
-[DEBUG] Step 222: Using global memory kernel (sequenceLength=512, stage=2097152)
-[DEBUG] Step 223: Using shared memory kernel (sequenceLength=256, stage=2097152)
-[DEBUG] Step 224: Using shared memory kernel (sequenceLength=128, stage=2097152)
-[DEBUG] Step 225: Using shared memory kernel (sequenceLength=64, stage=2097152)
-[DEBUG] Step 226: Using shared memory kernel (sequenceLength=32, stage=2097152)
-[DEBUG] Step 227: Using shared memory kernel (sequenceLength=16, stage=2097152)
-[DEBUG] Step 228: Using shared memory kernel (sequenceLength=8, stage=2097152)
-[DEBUG] Step 229: Using shared memory kernel (sequenceLength=4, stage=2097152)
-[DEBUG] Step 230: Using shared memory kernel (sequenceLength=2, stage=2097152)
-[DEBUG] Step 231: Using shared memory kernel (sequenceLength=1, stage=2097152)
-[DEBUG] Step 232: Using global memory kernel (sequenceLength=2097152, stage=4194304)
-[DEBUG] Step 233: Using global memory kernel (sequenceLength=1048576, stage=4194304)
-[DEBUG] Step 234: Using global memory kernel (sequenceLength=524288, stage=4194304)
-[DEBUG] Step 235: Using global memory kernel (sequenceLength=262144, stage=4194304)
-[DEBUG] Step 236: Using global memory kernel (sequenceLength=131072, stage=4194304)
-[DEBUG] Step 237: Using global memory kernel (sequenceLength=65536, stage=4194304)
-[DEBUG] Step 238: Using global memory kernel (sequenceLength=32768, stage=4194304)
-[DEBUG] Step 239: Using global memory kernel (sequenceLength=16384, stage=4194304)
-[DEBUG] Step 240: Using global memory kernel (sequenceLength=8192, stage=4194304)
-[DEBUG] Step 241: Using global memory kernel (sequenceLength=4096, stage=4194304)
-[DEBUG] Step 242: Using global memory kernel (sequenceLength=2048, stage=4194304)
-[DEBUG] Step 243: Using global memory kernel (sequenceLength=1024, stage=4194304)
-[DEBUG] Step 244: Using global memory kernel (sequenceLength=512, stage=4194304)
-[DEBUG] Step 245: Using shared memory kernel (sequenceLength=256, stage=4194304)
-[DEBUG] Step 246: Using shared memory kernel (sequenceLength=128, stage=4194304)
-[DEBUG] Step 247: Using shared memory kernel (sequenceLength=64, stage=4194304)
-[DEBUG] Step 248: Using shared memory kernel (sequenceLength=32, stage=4194304)
-[DEBUG] Step 249: Using shared memory kernel (sequenceLength=16, stage=4194304)
-[DEBUG] Step 250: Using shared memory kernel (sequenceLength=8, stage=4194304)
-[DEBUG] Step 251: Using shared memory kernel (sequenceLength=4, stage=4194304)
-[DEBUG] Step 252: Using shared memory kernel (sequenceLength=2, stage=4194304)
-[DEBUG] Step 253: Using shared memory kernel (sequenceLength=1, stage=4194304)
-[DEBUG] Step 254: Using global memory kernel (sequenceLength=4194304, stage=8388608)
-[DEBUG] Step 255: Using global memory kernel (sequenceLength=2097152, stage=8388608)
-[DEBUG] Step 256: Using global memory kernel (sequenceLength=1048576, stage=8388608)
-[DEBUG] Step 257: Using global memory kernel (sequenceLength=524288, stage=8388608)
-[DEBUG] Step 258: Using global memory kernel (sequenceLength=262144, stage=8388608)
-[DEBUG] Step 259: Using global memory kernel (sequenceLength=131072, stage=8388608)
-[DEBUG] Step 260: Using global memory kernel (sequenceLength=65536, stage=8388608)
-[DEBUG] Step 261: Using global memory kernel (sequenceLength=32768, stage=8388608)
-[DEBUG] Step 262: Using global memory kernel (sequenceLength=16384, stage=8388608)
-[DEBUG] Step 263: Using global memory kernel (sequenceLength=8192, stage=8388608)
-[DEBUG] Step 264: Using global memory kernel (sequenceLength=4096, stage=8388608)
-[DEBUG] Step 265: Using global memory kernel (sequenceLength=2048, stage=8388608)
-[DEBUG] Step 266: Using global memory kernel (sequenceLength=1024, stage=8388608)
-[DEBUG] Step 267: Using global memory kernel (sequenceLength=512, stage=8388608)
-[DEBUG] Step 268: Using shared memory kernel (sequenceLength=256, stage=8388608)
-[DEBUG] Step 269: Using shared memory kernel (sequenceLength=128, stage=8388608)
-[DEBUG] Step 270: Using shared memory kernel (sequenceLength=64, stage=8388608)
-[DEBUG] Step 271: Using shared memory kernel (sequenceLength=32, stage=8388608)
-[DEBUG] Step 272: Using shared memory kernel (sequenceLength=16, stage=8388608)
-[DEBUG] Step 273: Using shared memory kernel (sequenceLength=8, stage=8388608)
-[DEBUG] Step 274: Using shared memory kernel (sequenceLength=4, stage=8388608)
-[DEBUG] Step 275: Using shared memory kernel (sequenceLength=2, stage=8388608)
-[DEBUG] Step 276: Using shared memory kernel (sequenceLength=1, stage=8388608)
-[DEBUG] Step 277: Using global memory kernel (sequenceLength=8388608, stage=16777216)
-[DEBUG] Step 278: Using global memory kernel (sequenceLength=4194304, stage=16777216)
-[DEBUG] Step 279: Using global memory kernel (sequenceLength=2097152, stage=16777216)
-[DEBUG] Step 280: Using global memory kernel (sequenceLength=1048576, stage=16777216)
-[DEBUG] Step 281: Using global memory kernel (sequenceLength=524288, stage=16777216)
-[DEBUG] Step 282: Using global memory kernel (sequenceLength=262144, stage=16777216)
-[DEBUG] Step 283: Using global memory kernel (sequenceLength=131072, stage=16777216)
-[DEBUG] Step 284: Using global memory kernel (sequenceLength=65536, stage=16777216)
-[DEBUG] Step 285: Using global memory kernel (sequenceLength=32768, stage=16777216)
-[DEBUG] Step 286: Using global memory kernel (sequenceLength=16384, stage=16777216)
-[DEBUG] Step 287: Using global memory kernel (sequenceLength=8192, stage=16777216)
-[DEBUG] Step 288: Using global memory kernel (sequenceLength=4096, stage=16777216)
-[DEBUG] Step 289: Using global memory kernel (sequenceLength=2048, stage=16777216)
-[DEBUG] Step 290: Using global memory kernel (sequenceLength=1024, stage=16777216)
-[DEBUG] Step 291: Using global memory kernel (sequenceLength=512, stage=16777216)
-[DEBUG] Step 292: Using shared memory kernel (sequenceLength=256, stage=16777216)
-[DEBUG] Step 293: Using shared memory kernel (sequenceLength=128, stage=16777216)
-[DEBUG] Step 294: Using shared memory kernel (sequenceLength=64, stage=16777216)
-[DEBUG] Step 295: Using shared memory kernel (sequenceLength=32, stage=16777216)
-[DEBUG] Step 296: Using shared memory kernel (sequenceLength=16, stage=16777216)
-[DEBUG] Step 297: Using shared memory kernel (sequenceLength=8, stage=16777216)
-[DEBUG] Step 298: Using shared memory kernel (sequenceLength=4, stage=16777216)
-[DEBUG] Step 299: Using shared memory kernel (sequenceLength=2, stage=16777216)
-[DEBUG] Step 300: Using shared memory kernel (sequenceLength=1, stage=16777216)
-[DEBUG] Step 301: Using global memory kernel (sequenceLength=16777216, stage=33554432)
-[DEBUG] Step 302: Using global memory kernel (sequenceLength=8388608, stage=33554432)
-[DEBUG] Step 303: Using global memory kernel (sequenceLength=4194304, stage=33554432)
-[DEBUG] Step 304: Using global memory kernel (sequenceLength=2097152, stage=33554432)
-[DEBUG] Step 305: Using global memory kernel (sequenceLength=1048576, stage=33554432)
-[DEBUG] Step 306: Using global memory kernel (sequenceLength=524288, stage=33554432)
-[DEBUG] Step 307: Using global memory kernel (sequenceLength=262144, stage=33554432)
-[DEBUG] Step 308: Using global memory kernel (sequenceLength=131072, stage=33554432)
-[DEBUG] Step 309: Using global memory kernel (sequenceLength=65536, stage=33554432)
-[DEBUG] Step 310: Using global memory kernel (sequenceLength=32768, stage=33554432)
-[DEBUG] Step 311: Using global memory kernel (sequenceLength=16384, stage=33554432)
-[DEBUG] Step 312: Using global memory kernel (sequenceLength=8192, stage=33554432)
-[DEBUG] Step 313: Using global memory kernel (sequenceLength=4096, stage=33554432)
-[DEBUG] Step 314: Using global memory kernel (sequenceLength=2048, stage=33554432)
-[DEBUG] Step 315: Using global memory kernel (sequenceLength=1024, stage=33554432)
-[DEBUG] Step 316: Using global memory kernel (sequenceLength=512, stage=33554432)
-[DEBUG] Step 317: Using shared memory kernel (sequenceLength=256, stage=33554432)
-[DEBUG] Step 318: Using shared memory kernel (sequenceLength=128, stage=33554432)
-[DEBUG] Step 319: Using shared memory kernel (sequenceLength=64, stage=33554432)
-[DEBUG] Step 320: Using shared memory kernel (sequenceLength=32, stage=33554432)
-[DEBUG] Step 321: Using shared memory kernel (sequenceLength=16, stage=33554432)
-[DEBUG] Step 322: Using shared memory kernel (sequenceLength=8, stage=33554432)
-[DEBUG] Step 323: Using shared memory kernel (sequenceLength=4, stage=33554432)
-[DEBUG] Step 324: Using shared memory kernel (sequenceLength=2, stage=33554432)
-[DEBUG] Step 325: Using shared memory kernel (sequenceLength=1, stage=33554432)
-[DEBUG] Step 326: Using global memory kernel (sequenceLength=33554432, stage=67108864)
-[DEBUG] Step 327: Using global memory kernel (sequenceLength=16777216, stage=67108864)
-[DEBUG] Step 328: Using global memory kernel (sequenceLength=8388608, stage=67108864)
-[DEBUG] Step 329: Using global memory kernel (sequenceLength=4194304, stage=67108864)
-[DEBUG] Step 330: Using global memory kernel (sequenceLength=2097152, stage=67108864)
-[DEBUG] Step 331: Using global memory kernel (sequenceLength=1048576, stage=67108864)
-[DEBUG] Step 332: Using global memory kernel (sequenceLength=524288, stage=67108864)
-[DEBUG] Step 333: Using global memory kernel (sequenceLength=262144, stage=67108864)
-[DEBUG] Step 334: Using global memory kernel (sequenceLength=131072, stage=67108864)
-[DEBUG] Step 335: Using global memory kernel (sequenceLength=65536, stage=67108864)
-[DEBUG] Step 336: Using global memory kernel (sequenceLength=32768, stage=67108864)
-[DEBUG] Step 337: Using global memory kernel (sequenceLength=16384, stage=67108864)
-[DEBUG] Step 338: Using global memory kernel (sequenceLength=8192, stage=67108864)
-[DEBUG] Step 339: Using global memory kernel (sequenceLength=4096, stage=67108864)
-[DEBUG] Step 340: Using global memory kernel (sequenceLength=2048, stage=67108864)
-[DEBUG] Step 341: Using global memory kernel (sequenceLength=1024, stage=67108864)
-[DEBUG] Step 342: Using global memory kernel (sequenceLength=512, stage=67108864)
-[DEBUG] Step 343: Using shared memory kernel (sequenceLength=256, stage=67108864)
-[DEBUG] Step 344: Using shared memory kernel (sequenceLength=128, stage=67108864)
-[DEBUG] Step 345: Using shared memory kernel (sequenceLength=64, stage=67108864)
-[DEBUG] Step 346: Using shared memory kernel (sequenceLength=32, stage=67108864)
-[DEBUG] Step 347: Using shared memory kernel (sequenceLength=16, stage=67108864)
-[DEBUG] Step 348: Using shared memory kernel (sequenceLength=8, stage=67108864)
-[DEBUG] Step 349: Using shared memory kernel (sequenceLength=4, stage=67108864)
-[DEBUG] Step 350: Using shared memory kernel (sequenceLength=2, stage=67108864)
-[DEBUG] Step 351: Using shared memory kernel (sequenceLength=1, stage=67108864)
-[DEBUG] Step 352: Using global memory kernel (sequenceLength=67108864, stage=134217728)
-[DEBUG] Step 353: Using global memory kernel (sequenceLength=33554432, stage=134217728)
-[DEBUG] Step 354: Using global memory kernel (sequenceLength=16777216, stage=134217728)
-[DEBUG] Step 355: Using global memory kernel (sequenceLength=8388608, stage=134217728)
-[DEBUG] Step 356: Using global memory kernel (sequenceLength=4194304, stage=134217728)
-[DEBUG] Step 357: Using global memory kernel (sequenceLength=2097152, stage=134217728)
-[DEBUG] Step 358: Using global memory kernel (sequenceLength=1048576, stage=134217728)
-[DEBUG] Step 359: Using global memory kernel (sequenceLength=524288, stage=134217728)
-[DEBUG] Step 360: Using global memory kernel (sequenceLength=262144, stage=134217728)
-[DEBUG] Step 361: Using global memory kernel (sequenceLength=131072, stage=134217728)
-[DEBUG] Step 362: Using global memory kernel (sequenceLength=65536, stage=134217728)
-[DEBUG] Step 363: Using global memory kernel (sequenceLength=32768, stage=134217728)
-[DEBUG] Step 364: Using global memory kernel (sequenceLength=16384, stage=134217728)
-[DEBUG] Step 365: Using global memory kernel (sequenceLength=8192, stage=134217728)
-[DEBUG] Step 366: Using global memory kernel (sequenceLength=4096, stage=134217728)
-[DEBUG] Step 367: Using global memory kernel (sequenceLength=2048, stage=134217728)
-[DEBUG] Step 368: Using global memory kernel (sequenceLength=1024, stage=134217728)
-[DEBUG] Step 369: Using global memory kernel (sequenceLength=512, stage=134217728)
-[DEBUG] Step 370: Using shared memory kernel (sequenceLength=256, stage=134217728)
-[DEBUG] Step 371: Using shared memory kernel (sequenceLength=128, stage=134217728)
-[DEBUG] Step 372: Using shared memory kernel (sequenceLength=64, stage=134217728)
-[DEBUG] Step 373: Using shared memory kernel (sequenceLength=32, stage=134217728)
-[DEBUG] Step 374: Using shared memory kernel (sequenceLength=16, stage=134217728)
-[DEBUG] Step 375: Using shared memory kernel (sequenceLength=8, stage=134217728)
-[DEBUG] Step 376: Using shared memory kernel (sequenceLength=4, stage=134217728)
-[DEBUG] Step 377: Using shared memory kernel (sequenceLength=2, stage=134217728)
-[DEBUG] Step 378: Using shared memory kernel (sequenceLength=1, stage=134217728)
-[INFO] Teacher's shared memory optimization completed in 378 steps
-[DEBUG] Shared memory kernel completed
-[INFO] Shared memory bitonic sort completed
-[STAGE] Transferring sorted data back to host
-[INFO] Sorted array:
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0... (134217708 more elements)]
-[STAGE] Performing CPU sort for comparison
-[STAGE] Validating results
-[INFO] Validation successful - GPU and CPU results match!
-[INFO] FUNCTIONAL SUCCESS
-FUNCTIONAL SUCCESS
-Array size         : 134217728
-CPU Sort Time (ms) : 37211.421875
-GPU Sort Time (ms) : 790.093750
-GPU Sort Speed     : 169.875702 million elements per second
-PERF PASSING
-GPU Sort is  47x faster than CPU !!!
-H2D Transfer Time (ms): 113.976768
-Kernel Time (ms)      : 304.580139
-D2H Transfer Time (ms): 371.536804
+ create mode 100644 Assigment_2/analyze_performance.cu
+ create mode 100644 Assigment_2/profile_kernel.cu
+[mfajeau3@atl1-1-03-011-3-0 CS8803_GPU]$ cd Assigment_2
+[mfajeau3@atl1-1-03-011-3-0 Assigment_2]$ nvcc -o analyze_performance analyze_performance.cu
+nvcc warning : Support for offline compilation for architectures prior to '<compute/sm/lto>_75' will be removed in a future release (Use -Wno-deprecated-gpu-targets to suppress warning).
+[mfajeau3@atl1-1-03-011-3-0 Assigment_2]$ ls
+a.out                   logs.txt
+analyze_performance     measure_performance.py
+analyze_performance.cu  measure_performance_optimized.py
+current_perf.txt        optimization_report.txt
+grade.py                optimization_summary.txt
+kernel.cu               profile_kernel.cu
+kernel_backup.cu        project_2.pdf
+kernel_clean.cu
+[mfajeau3@atl1-1-03-011-3-0 Assigment_2]$ ./analyze_performance 
+GPU Performance Analysis for Bitonic Sort
+=========================================
+Device: NVIDIA H100 80GB HBM3
+SM Count: 132
+Max Threads per SM: 2048
+Max Threads per Block: 1024
+Warp Size: 32
+Memory Clock Rate: 2619 MHz
+Memory Bus Width: 5120 bits
+Peak Memory Bandwidth: 3352 GB/s
+L2 Cache Size: 50.0 MB
+
+Memory Access Pattern Analysis:
+Stride	Time(ms)	GB/s	Efficiency
+------	--------	----	----------
+1	0.327		3284.2	98.0%
+2	0.327		3285.7	98.1%
+4	0.327		3285.6	98.1%
+8	0.327		3285.4	98.1%
+16	0.327		3284.3	98.0%
+32	0.319		3365.2	100.5%
+64	0.319		3364.5	100.4%
+128	0.319		3368.4	100.5%
+256	0.318		3376.3	100.8%
+512	0.318		3376.1	100.8%
+1024	0.318		3375.0	100.7%
+2048	0.318		3375.5	100.8%
+4096	0.318		3376.8	100.8%
+8192	0.318		3376.3	100.8%
+16384	0.318		3374.8	100.7%
+32768	0.318		3376.4	100.8%
+65536	0.318		3373.6	100.7%
+
+Block Size Analysis:
+Threads	Blocks		Time(ms)
+-------	------		--------
+64	2097152		1.268
+128	1048576		0.635
+256	524288		0.321
+512	262144		0.253
+1024	131072		0.283
+
+
+Memory Transfer Analysis:
+========================
+Transfer Type			H2D (ms)	D2H (ms)	Bandwidth (GB/s)
+-------------			--------	--------	----------------
+Regular Memory			48.80		28.39		11.0 / 18.9
+Pinned Memory			9.70		9.74		55.3 / 55.1
+Pinned + Async			9.70		9.75		55.3 / 55.1
+
+Speedup vs Regular Memory:
+Pinned Memory: 5.03x H2D, 2.91x D2H
+Pinned + Async: 5.03x H2D, 2.91x D2H
+
+
+Warp Efficiency Analysis:
+========================
+j	Avg Active Threads/Warp	Efficiency
+---	----------------------	----------
+1	16.00			50.0%
+2	16.00			50.0%
+4	16.00			50.0%
+8	16.00			50.0%
+16	16.00			50.0%
+32	32.00			100.0%
+64	32.00			100.0%
+128	32.00			100.0%
+256	32.00			100.0%
+512	32.00			100.0%
+1024	32.00			100.0%
+4096	32.00			100.0%
+16384	32.00			100.0%
+65536	32.00			100.0%
+262144	32.00			100.0%
+1048576	32.00			100.0%
+4194304	32.00			100.0%
+16777216	32.00			100.0%
+[mfajeau3@atl1-1-03-011-3-0 Assigment_2]$ ^C
+[mfajeau3@atl1-1-03-011-3-0 Assigment_2]$ 

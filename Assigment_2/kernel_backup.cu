@@ -319,7 +319,7 @@ LOG_INFO("Data successfully copied to GPU");
 // Perform bitonic sort on GPU using shared memory
 LOG_STAGE("Starting shared memory bitonic sort on GPU");
 // OPTIMIZATION 3: Better launch configuration for H100
-int threadsPerBlock = 512;  // H100 benefits from larger thread blocks
+int threadsPerBlock = 512;  // Optimal based on H100 performance analysis
 int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
 LOG_INFO("Launch configuration: %d blocks, %d threads per block", blocksPerGrid, threadsPerBlock);
 
