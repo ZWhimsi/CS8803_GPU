@@ -1,4 +1,4 @@
-%%writefile kernel.cu
+
 
 #include <stdio.h>
 #include <stdlib.h>
