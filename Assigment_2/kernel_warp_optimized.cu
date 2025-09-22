@@ -39,9 +39,6 @@ __global__ void BitonicSort_warp(int* data, int j, int k, int size) {
         // Load value
         int val = data[i];
         
-        // Get partner lane
-        int partner_lane = threadIdx.x ^ j;
-        
         // Exchange values within warp using shuffle
         int partner_val = __shfl_xor_sync(0xFFFFFFFF, val, j);
         
@@ -83,9 +80,6 @@ __global__ void BitonicSort_global(int* data, int j, int k, int size){
     
     if (i < partnerGlobalIdx && i < size && partnerGlobalIdx < size) {
         bool ascending = (i & k) == 0;
-        
-        // Prefetch hint for L2 cache (H100 feature)
-        __builtin_prefetch(&data[partnerGlobalIdx], 0, 3);
         
         int val1 = data[i];
         int val2 = data[partnerGlobalIdx];
