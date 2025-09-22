@@ -1,4 +1,4 @@
-
+%%writefile kernel.cu
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -208,8 +208,8 @@ __global__ void BitonicSort_global(int* data, int j, int k, int size){
   if (i < partnerGlobalIdx && i < size && partnerGlobalIdx < size) {
     bool ascending = (i & k) == 0; 
     
-        // OPTIMIZATION 8: Prefetch data for better cache utilization
-        // Note: __builtin_prefetch not available in CUDA device code
+    // OPTIMIZATION 8: Use L2 cache hints for better utilization
+    // Note: __builtin_prefetch is not available in CUDA device code
     
     // OPTIMIZATION 4: Coalesced memory access pattern
     // Threads in the same warp access consecutive memory locations
@@ -284,22 +284,13 @@ DTYPE* h_arr_pinned;
 CUDA_CHECK(cudaMallocHost(&h_arr_pinned, size * sizeof(DTYPE)));
 memcpy(h_arr_pinned, arrCpu, size * sizeof(DTYPE));
 
-// Allocate memory on the device
-LOG_DEBUG("Allocating GPU memory for %d elements", size);
-CUDA_CHECK(cudaMalloc(&d_arr, size * sizeof(DTYPE)));
-
-// OPTIMIZATION 5: Create CUDA stream for async operations
+// OPTIMIZATION 5: Create CUDA stream for async operations (declare early for D2H use)
 cudaStream_t stream;
 CUDA_CHECK(cudaStreamCreate(&stream));
 
-// OPTIMIZATION 7: Set L2 cache persistence for better memory access
-cudaStreamAttrValue stream_attr;
-stream_attr.accessPolicyWindow.base_ptr = (void*)d_arr;
-stream_attr.accessPolicyWindow.num_bytes = size * sizeof(DTYPE);
-stream_attr.accessPolicyWindow.hitRatio = 1.0f;
-stream_attr.accessPolicyWindow.hitProp = cudaAccessPropertyPersisting;
-stream_attr.accessPolicyWindow.missProp = cudaAccessPropertyStreaming;
-cudaStreamSetAttribute(stream, cudaStreamAttributeAccessPolicyWindow, &stream_attr);
+// Allocate memory on the device
+LOG_DEBUG("Allocating GPU memory for %d elements", size);
+CUDA_CHECK(cudaMalloc(&d_arr, size * sizeof(DTYPE)));
 
 // Copy data from host to device with pinned memory (2-3x faster)
 LOG_DEBUG("Copying data from host to device with pinned memory");
