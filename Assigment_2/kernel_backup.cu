@@ -208,8 +208,8 @@ __global__ void BitonicSort_global(int* data, int j, int k, int size){
   if (i < partnerGlobalIdx && i < size && partnerGlobalIdx < size) {
     bool ascending = (i & k) == 0; 
     
-    // OPTIMIZATION 8: Prefetch data for better cache utilization
-    __builtin_prefetch(&data[partnerGlobalIdx], 1, 0);
+        // OPTIMIZATION 8: Prefetch data for better cache utilization
+        // Note: __builtin_prefetch not available in CUDA device code
     
     // OPTIMIZATION 4: Coalesced memory access pattern
     // Threads in the same warp access consecutive memory locations
