@@ -205,23 +205,35 @@ int main(int argc, char *argv[]) {
     // Declare the device pointer
     DTYPE* d_arr;
 
-    // OPTIMIZATION 1: Use pinned memory for faster transfers
-    DTYPE* h_arr_pinned;
-    CUDA_CHECK(cudaMallocHost(&h_arr_pinned, size * sizeof(DTYPE)));
-    memcpy(h_arr_pinned, arrCpu, size * sizeof(DTYPE));
-
-    // OPTIMIZATION 2: Create CUDA stream for async operations
-    cudaStream_t stream;
-    CUDA_CHECK(cudaStreamCreate(&stream));
+    // Try to use pinned memory for faster transfers, fallback to regular memory if it fails
+    DTYPE* h_arr_pinned = nullptr;
+    cudaStream_t stream = 0;
+    bool use_pinned_memory = false;
+    
+    cudaError_t pinned_result = cudaMallocHost(&h_arr_pinned, size * sizeof(DTYPE));
+    if (pinned_result == cudaSuccess) {
+        use_pinned_memory = true;
+        memcpy(h_arr_pinned, arrCpu, size * sizeof(DTYPE));
+        CUDA_CHECK(cudaStreamCreate(&stream));
+        LOG_DEBUG("Using pinned memory for faster transfers");
+    } else {
+        LOG_DEBUG("Pinned memory allocation failed (error %d), using regular memory", pinned_result);
+        use_pinned_memory = false;
+    }
 
     // Allocate memory on the device
     LOG_DEBUG("Allocating GPU memory for %d elements", size);
     CUDA_CHECK(cudaMalloc(&d_arr, size * sizeof(DTYPE)));
 
-    // Copy data from host to device with pinned memory (2-3x faster)
-    LOG_DEBUG("Copying data from host to device with pinned memory");
-    CUDA_CHECK(cudaMemcpyAsync(d_arr, h_arr_pinned, size * sizeof(DTYPE), cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaStreamSynchronize(stream));
+    // Copy data from host to device
+    if (use_pinned_memory) {
+        LOG_DEBUG("Copying data from host to device with pinned memory");
+        CUDA_CHECK(cudaMemcpyAsync(d_arr, h_arr_pinned, size * sizeof(DTYPE), cudaMemcpyHostToDevice, stream));
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+    } else {
+        LOG_DEBUG("Copying data from host to device with regular memory");
+        CUDA_CHECK(cudaMemcpy(d_arr, arrCpu, size * sizeof(DTYPE), cudaMemcpyHostToDevice));
+    }
     LOG_INFO("Data successfully copied to GPU");
 
     /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
@@ -231,8 +243,12 @@ int main(int argc, char *argv[]) {
     float h2dTime, kernelTime, d2hTime;
 
     cudaEventRecord(start);
-    CUDA_CHECK(cudaMemcpyAsync(d_arr, h_arr_pinned, size * sizeof(DTYPE), cudaMemcpyHostToDevice, stream));
-    CUDA_CHECK(cudaStreamSynchronize(stream));
+    if (use_pinned_memory) {
+        CUDA_CHECK(cudaMemcpyAsync(d_arr, h_arr_pinned, size * sizeof(DTYPE), cudaMemcpyHostToDevice, stream));
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+    } else {
+        CUDA_CHECK(cudaMemcpy(d_arr, arrCpu, size * sizeof(DTYPE), cudaMemcpyHostToDevice));
+    }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&h2dTime, start, stop);
@@ -290,10 +306,14 @@ int main(int argc, char *argv[]) {
 
     // Transfer sorted data back to host (copied to arrSortedGpu)
     LOG_STAGE("Transferring sorted data back to host");
-    // Use pinned memory for D2H transfer with async
-    CUDA_CHECK(cudaMemcpyAsync(h_arr_pinned, d_arr, size * sizeof(DTYPE), cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    memcpy(arrSortedGpu, h_arr_pinned, size * sizeof(DTYPE));
+    if (use_pinned_memory) {
+        // Use pinned memory for D2H transfer with async
+        CUDA_CHECK(cudaMemcpyAsync(h_arr_pinned, d_arr, size * sizeof(DTYPE), cudaMemcpyDeviceToHost, stream));
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        memcpy(arrSortedGpu, h_arr_pinned, size * sizeof(DTYPE));
+    } else {
+        CUDA_CHECK(cudaMemcpy(arrSortedGpu, d_arr, size * sizeof(DTYPE), cudaMemcpyDeviceToHost));
+    }
     LOG_INFO("Sorted array:");
     printArray(arrSortedGpu, original_size, "  ");
 
@@ -373,8 +393,10 @@ int main(int argc, char *argv[]) {
 
     // Clean up GPU memory
     CUDA_CHECK(cudaFree(d_arr));
-    CUDA_CHECK(cudaFreeHost(h_arr_pinned));
-    CUDA_CHECK(cudaStreamDestroy(stream));
+    if (use_pinned_memory) {
+        CUDA_CHECK(cudaFreeHost(h_arr_pinned));
+        CUDA_CHECK(cudaStreamDestroy(stream));
+    }
     
     free(arrCpu);
     free(arrSortedGpu);
