@@ -23,6 +23,15 @@ static inline int nextPowerOfTwo(int n) {
     return p;
 }
 
+// Fill data[start .. size-1] with INT_MAX on device.
+__global__ void PadWithMax(DTYPE* data, int start, int size) {
+    int gid = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    for (int idx = start + gid; idx < size; idx += stride) {
+        data[idx] = INT_MAX;
+    }
+}
+
 // Global-memory phase of bitonic sort.
 // Grid-stride loop helps hide memory latency.
 __launch_bounds__(1024, 2)
@@ -167,17 +176,13 @@ DTYPE *arrSortedGpu = nullptr;
 cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 
 // Transfer data (arr_cpu) to device 
-// Note: Bitonic sort network expects a power-of-two size. We pad with INT_MAX.
+// Note: Bitonic sort network expects a power-of-two size. We only copy the
+// original part here to keep H2D timing accurate. The padding is done on GPU
+// in the next section (counted in kernel time).
 int paddedSize = nextPowerOfTwo(size);
-DTYPE* h_padded = nullptr;
-cudaMallocHost(&h_padded, paddedSize * sizeof(DTYPE));
-for (int i = 0; i < size; ++i) h_padded[i] = arrCpu[i];
-for (int i = size; i < paddedSize; ++i) h_padded[i] = INT_MAX;
-
 DTYPE* d_arr = nullptr;
 cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
-cudaMemcpy(d_arr, h_padded, (size_t)paddedSize * sizeof(DTYPE), cudaMemcpyHostToDevice);
-cudaFreeHost(h_padded);
+cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
@@ -199,6 +204,15 @@ if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
+
+// Pad device array with INT_MAX (not counted in H2D time)
+{
+    int padThreads = 1024;
+    int padBlocks  = (paddedSize - size + padThreads - 1) / padThreads;
+    if (paddedSize > size && padBlocks > 0) {
+        PadWithMax<<<padBlocks, padThreads>>>(d_arr, size, paddedSize);
+    }
+}
 
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
