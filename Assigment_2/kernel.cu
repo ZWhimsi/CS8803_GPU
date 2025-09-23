@@ -140,6 +140,71 @@ __global__ void BitonicSort_shared_batched_4x(DTYPE* __restrict__ data, int k, i
     if (g3 < size) data[g3] = s[t + 3 * bd];
 }
 
+// Batched shared-memory phase processing an 8x block tile.
+// It executes all remaining j < 8*blockDim.x steps for a given k.
+__global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, int size) {
+    extern __shared__ DTYPE s[]; // size: 8 * blockDim.x
+    const int bd = blockDim.x;
+    const int base = (blockIdx.x * bd) << 3; // 8 * blockDim.x per block
+    const int t = threadIdx.x;
+
+    const int g0 = base + t;
+    const int g1 = g0 + bd;
+    const int g2 = g1 + bd;
+    const int g3 = g2 + bd;
+    const int g4 = g3 + bd;
+    const int g5 = g4 + bd;
+    const int g6 = g5 + bd;
+    const int g7 = g6 + bd;
+
+    // Load eight values per thread. Out-of-range elements are padded by INT_MAX.
+    s[t]            = (g0 < size) ? data[g0] : INT_MAX;
+    s[t + bd]       = (g1 < size) ? data[g1] : INT_MAX;
+    s[t + 2 * bd]   = (g2 < size) ? data[g2] : INT_MAX;
+    s[t + 3 * bd]   = (g3 < size) ? data[g3] : INT_MAX;
+    s[t + 4 * bd]   = (g4 < size) ? data[g4] : INT_MAX;
+    s[t + 5 * bd]   = (g5 < size) ? data[g5] : INT_MAX;
+    s[t + 6 * bd]   = (g6 < size) ? data[g6] : INT_MAX;
+    s[t + 7 * bd]   = (g7 < size) ? data[g7] : INT_MAX;
+    __syncthreads();
+
+    // Process jj for this k within the 8x tile.
+    for (int jj = min(k >> 1, 4 * bd); jj > 0; jj >>= 1) {
+        // Repeat for 8 logical lanes separated by bd
+        #define PROCESS_LID(LID_EXPR) \
+          { \
+            const int lid = (LID_EXPR); \
+            const int partner = lid ^ jj; \
+            if (lid < partner) { \
+              const int gi = base + lid; \
+              const bool ascending = ((gi & k) == 0); \
+              DTYPE a = s[lid]; \
+              DTYPE b = s[partner]; \
+              if ((a > b) == ascending) { s[lid] = b; s[partner] = a; } \
+            } \
+          }
+
+        PROCESS_LID(t);           __syncthreads();
+        PROCESS_LID(t + bd);      __syncthreads();
+        PROCESS_LID(t + 2 * bd);  __syncthreads();
+        PROCESS_LID(t + 3 * bd);  __syncthreads();
+        PROCESS_LID(t + 4 * bd);  __syncthreads();
+        PROCESS_LID(t + 5 * bd);  __syncthreads();
+        PROCESS_LID(t + 6 * bd);  __syncthreads();
+        PROCESS_LID(t + 7 * bd);  __syncthreads();
+        #undef PROCESS_LID
+    }
+
+    // Store back eight values.
+    if (g0 < size) data[g0] = s[t];
+    if (g1 < size) data[g1] = s[t + bd];
+    if (g2 < size) data[g2] = s[t + 2 * bd];
+    if (g3 < size) data[g3] = s[t + 3 * bd];
+    if (g4 < size) data[g4] = s[t + 4 * bd];
+    if (g5 < size) data[g5] = s[t + 5 * bd];
+    if (g6 < size) data[g6] = s[t + 6 * bd];
+    if (g7 < size) data[g7] = s[t + 7 * bd];
+}
 
 // Implement your GPU device kernel(s) here (e.g., the bitonic sort kernel).
 
@@ -211,8 +276,8 @@ cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 int minBlocks = prop.multiProcessorCount * 32;
 if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 
-size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
-cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
+size_t sharedMem8x = (size_t)threadsPerBlock * 8 * sizeof(DTYPE);
+cudaFuncSetCacheConfig(BitonicSort_shared_batched_8x, cudaFuncCachePreferShared);
 
 // Pad device array to power-of-two on device (counted in kernel time)
 {
@@ -225,13 +290,15 @@ cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared)
 
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
-    for (; j >= (threadsPerBlock << 2); j >>= 1) {
+    // Global phases while partners cross 8*blockDim tiles
+    for (; j >= (threadsPerBlock << 3); j >>= 1) {
         BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, paddedSize);
     }
+    // One batched shared-memory 8x-tile pass per k for remaining j
     if (j > 0) {
-        int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
-        if (blocks4x < prop.multiProcessorCount * 8) blocks4x = prop.multiProcessorCount * 8;
-        BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x>>>(d_arr, k, paddedSize);
+        int blocks8x = (paddedSize + (threadsPerBlock << 3) - 1) / (threadsPerBlock << 3);
+        if (blocks8x < prop.multiProcessorCount * 4) blocks8x = prop.multiProcessorCount * 4;
+        BitonicSort_shared_batched_8x<<<blocks8x, threadsPerBlock, sharedMem8x>>>(d_arr, k, paddedSize);
     }
 }
 cudaDeviceSynchronize();
