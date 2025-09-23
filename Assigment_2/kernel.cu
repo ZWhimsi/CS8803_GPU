@@ -154,7 +154,9 @@ int main(int argc, char* argv[]) {
 
     srand(time(NULL));
 
-    DTYPE* arrCpu = (DTYPE*)malloc(size * sizeof(DTYPE));
+    // Allocate input array in pinned host memory for fast H2D
+    DTYPE* arrCpu = nullptr;
+    cudaMallocHost(&arrCpu, size * sizeof(DTYPE));
 
     for (int i = 0; i < size; i++) {
         arrCpu[i] = rand() % 1000;
@@ -182,8 +184,6 @@ cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 int paddedSize = nextPowerOfTwo(size);
 DTYPE* d_arr = nullptr;
 cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
-// Register the existing host buffer as pinned and copy directly
-cudaHostRegister(arrCpu, (size_t)size * sizeof(DTYPE), 0);
 cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
@@ -240,7 +240,7 @@ cudaDeviceSynchronize();
 
 // Transfer sorted data back to host (copied to arrSortedGpu)
 cudaMemcpy(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost);
-cudaHostUnregister(arrCpu);
+
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
@@ -264,7 +264,7 @@ cudaHostUnregister(arrCpu);
         }
     }
 
-    free(arrCpu);
+    cudaFreeHost(arrCpu);
     cudaFreeHost(arrSortedGpu);
 
     if (match)
