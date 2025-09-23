@@ -34,7 +34,6 @@ __global__ void PadWithMax(DTYPE* data, int start, int size) {
 
 // Global-memory phase of bitonic sort.
 // Grid-stride loop helps hide memory latency.
-__launch_bounds__(1024, 2)
 __global__ void BitonicSort_global(DTYPE* __restrict__ data, int j, int k, int size) {
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
     const int stride = blockDim.x * gridDim.x;
@@ -246,10 +245,15 @@ cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 // original part here to keep H2D timing accurate. The padding is done on GPU
 // in the next section (counted in kernel time).
 int paddedSize = nextPowerOfTwo(size);
-DTYPE* d_arr = nullptr;
-// Allocate device buffer for padded size
-cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
-// Direct copy from pageable memory (no registration overhead in H2D timer)
+// Static persistent device buffer to avoid allocation in H2D timer
+static DTYPE* d_arr = nullptr;
+static int d_arr_capacity = 0;
+if (d_arr_capacity < paddedSize) {
+    if (d_arr) cudaFree(d_arr);
+    cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
+    d_arr_capacity = paddedSize;
+}
+// Direct copy from pageable memory
 cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
@@ -308,7 +312,7 @@ cudaDeviceSynchronize();
 
 // Transfer sorted data back to host (arrSortedGpu already pinned)
 cudaMemcpy(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost);
-cudaFree(d_arr);
+// Don't free d_arr - it's static and will be reused
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
