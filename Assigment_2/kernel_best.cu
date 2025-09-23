@@ -6,6 +6,8 @@
 #include <math.h>
 #include <float.h>
 #include <string.h>
+#include <cuda.h>
+#include <cuda_runtime.h>
 
 typedef int DTYPE;
 
@@ -25,6 +27,28 @@ typedef int DTYPE;
 #define LOG_ERROR(fmt, ...) fprintf(stderr, "[ERROR] " fmt "\n", ##__VA_ARGS__)
 #define LOG_STAGE(stage) printf("\n[STAGE] %s\n", stage)
 
+// Diagnostics toggle (enable with -DENABLE_DIAG=1)
+#ifndef ENABLE_DIAG
+#define ENABLE_DIAG 0
+#endif
+
+// Limit sampling to first N blocks to reduce overhead
+#ifndef DIAG_SAMPLE_BLOCKS
+#define DIAG_SAMPLE_BLOCKS 128
+#endif
+
+typedef struct {
+  unsigned long long compares;
+  unsigned long long swaps;
+  unsigned long long sameBlockPairs;
+  unsigned long long crossBlockPairs;
+  unsigned long long divergentWarps;
+} KernelStats;
+
+#if ENABLE_DIAG
+__device__ KernelStats d_stats;
+#endif
+
 // GPU Kernel for bitonic sort with global memory
 __global__ void BitonicSort_global(int* data, int j, int k, int size){
   int i = blockDim.x*blockIdx.x + threadIdx.x;
@@ -40,9 +64,33 @@ __global__ void BitonicSort_global(int* data, int j, int k, int size){
     int val2 = data[partnerGlobalIdx];
 
     // Compare and swap if needed
+    #if ENABLE_DIAG
+    // Sampling only first DIAG_SAMPLE_BLOCKS blocks for diagnostics
+    if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
+      int partnerBlockIdx = partnerGlobalIdx / blockDim.x;
+      bool sameBlock = (partnerBlockIdx == blockIdx.x);
+      atomicAdd(&d_stats.compares, 1ULL);
+      if (sameBlock) {
+        atomicAdd(&d_stats.sameBlockPairs, 1ULL);
+      } else {
+        atomicAdd(&d_stats.crossBlockPairs, 1ULL);
+      }
+      unsigned int mask = __ballot_sync(0xffffffff, (val1 > val2) == ascending);
+      if ((threadIdx.x & 31) == 0) {
+        if (mask != 0u && mask != 0xffffffffu) {
+          atomicAdd(&d_stats.divergentWarps, 1ULL);
+        }
+      }
+    }
+    #endif
     if ((val1 > val2) == ascending) {
       data[i] = val2;
       data[partnerGlobalIdx] = val1;
+      #if ENABLE_DIAG
+      if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
+        atomicAdd(&d_stats.swaps, 1ULL);
+      }
+      #endif
     }
   }
 }
@@ -79,6 +127,23 @@ __global__ void BitonicSort_shared(int* data, int j, int k, int size){
       val2 = data[partnerGlobalIdx];
     }
     
+    #if ENABLE_DIAG
+    if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
+      atomicAdd(&d_stats.compares, 1ULL);
+      if (sameBlock) {
+        atomicAdd(&d_stats.sameBlockPairs, 1ULL);
+      } else {
+        atomicAdd(&d_stats.crossBlockPairs, 1ULL);
+      }
+      unsigned int mask = __ballot_sync(0xffffffff, (val1 > val2) == ascending);
+      if ((threadIdx.x & 31) == 0) {
+        if (mask != 0u && mask != 0xffffffffu) {
+          atomicAdd(&d_stats.divergentWarps, 1ULL);
+        }
+      }
+    }
+    #endif
+
     // Compare and swap if needed
     if ((val1 > val2) == ascending) {
       if (sameBlock) {
@@ -88,6 +153,11 @@ __global__ void BitonicSort_shared(int* data, int j, int k, int size){
         s_array[threadIdx.x] = val2;
         data[partnerGlobalIdx] = val1;
       }
+      #if ENABLE_DIAG
+      if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
+        atomicAdd(&d_stats.swaps, 1ULL);
+      }
+      #endif
     }
   }
   
@@ -160,6 +230,12 @@ int main(int argc, char *argv[]) {
     }
     
     LOG_INFO("Starting bitonic sort with array size: %d", original_size);
+    int device = 0;
+    cudaDeviceProp prop;
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, device));
+    LOG_INFO("Device: %s | SMs=%d | MaxThreads/Block=%d | MaxThreads/SM=%d | SharedMem/Block=%zu KB",
+             prop.name, prop.multiProcessorCount, prop.maxThreadsPerBlock, prop.maxThreadsPerMultiProcessor,
+             prop.sharedMemPerBlock / 1024);
     
     // For bitonic sort, size must be a power of 2
     int size = nextPowerOfTwo(original_size);
@@ -232,6 +308,10 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaMemcpy(d_arr, use_pinned_input ? h_arr_pinned : arrCpu, 
                           size * sizeof(DTYPE), cudaMemcpyHostToDevice));
     LOG_INFO("Data successfully copied to GPU");
+
+    #if ENABLE_DIAG
+    CUDA_CHECK(cudaMemsetToSymbol(d_stats, 0, sizeof(KernelStats)));
+    #endif
 
     /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEvent_t start, stop;
@@ -319,6 +399,46 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&d2hTime, start, stop);
+    /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
+
+    // Derived throughput metrics
+    double totalBytes = (double)size * sizeof(DTYPE);
+    double h2dGBs = totalBytes / (1e6 * h2dTime);
+    double d2hGBs = totalBytes / (1e6 * d2hTime);
+
+    // Occupancy estimation
+    int numBlocksPerSm = 0;
+    size_t occupancySharedMem = 512 * sizeof(DTYPE); // matches threadsPerBlock when size<=512
+    if (size <= 512) {
+        CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, BitonicSort_shared, 512, (int)occupancySharedMem));
+    } else {
+        CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, BitonicSort_global, 512, 0));
+    }
+    double occPct = 100.0 * (double)numBlocksPerSm * 512.0 / (double)prop.maxThreadsPerMultiProcessor;
+
+    printf("\nPerf Diagnostics (host):\n");
+    printf("- Kernel launches (steps): %d\n", step_count);
+    printf("- Estimated occupancy: %.1f%% (blocks/SM=%d)\n", occPct, numBlocksPerSm);
+    printf("- H2D throughput: %.2f GB/s | D2H throughput: %.2f GB/s\n", h2dGBs, d2hGBs);
+
+    #if ENABLE_DIAG
+    // Read device-side stats and scale by sampling ratio
+    KernelStats h_stats;
+    CUDA_CHECK(cudaMemcpyFromSymbol(&h_stats, d_stats, sizeof(KernelStats)));
+    int sampledBlocks = (blocksPerGrid < DIAG_SAMPLE_BLOCKS) ? blocksPerGrid : DIAG_SAMPLE_BLOCKS;
+    double scale = sampledBlocks > 0 ? ((double)blocksPerGrid / (double)sampledBlocks) : 1.0;
+    unsigned long long est_compares = (unsigned long long)(h_stats.compares * scale + 0.5);
+    unsigned long long est_swaps = (unsigned long long)(h_stats.swaps * scale + 0.5);
+    unsigned long long est_same = (unsigned long long)(h_stats.sameBlockPairs * scale + 0.5);
+    unsigned long long est_cross = (unsigned long long)(h_stats.crossBlockPairs * scale + 0.5);
+    unsigned long long divWarps = (unsigned long long)(h_stats.divergentWarps * scale + 0.5);
+
+    printf("\nPerf Diagnostics (device-sampled):\n");
+    printf("- Compares (estimated): %llu\n", est_compares);
+    printf("- Swaps (estimated):    %llu\n", est_swaps);
+    printf("- Same-block pairs est: %llu | Cross-block pairs est: %llu\n", est_same, est_cross);
+    printf("- Divergent warps est:  %llu\n", divWarps);
+    #endif
     /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
     // CPU sort for validation
