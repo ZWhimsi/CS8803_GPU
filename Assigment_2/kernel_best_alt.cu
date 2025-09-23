@@ -37,11 +37,6 @@ typedef int DTYPE;
 #define DIAG_SAMPLE_BLOCKS 128
 #endif
 
-// Tunable block size for tile pre-sort
-#ifndef THREADS_PER_BLOCK
-#define THREADS_PER_BLOCK 1024
-#endif
-
 typedef struct {
   unsigned long long compares;
   unsigned long long swaps;
@@ -54,295 +49,8 @@ typedef struct {
 __device__ KernelStats d_stats;
 #endif
 
-// Global memory bitonic compare-swap step
-__global__ void BitonicSort_global(int* data, int j, int k, int size){
-  int i = blockDim.x*blockIdx.x + threadIdx.x;
-  if (i >= size) return;
-  int partnerGlobalIdx = i ^ j;
-  if (i < partnerGlobalIdx && partnerGlobalIdx < size) {
-    bool ascending = (i & k) == 0;
-    int val1 = data[i];
-    int val2 = data[partnerGlobalIdx];
-    #if ENABLE_DIAG
-    if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
-      int partnerBlockIdx = partnerGlobalIdx / blockDim.x;
-      bool sameBlock = (partnerBlockIdx == blockIdx.x);
-      atomicAdd(&d_stats.compares, 1ULL);
-      if (sameBlock) atomicAdd(&d_stats.sameBlockPairs, 1ULL); else atomicAdd(&d_stats.crossBlockPairs, 1ULL);
-      unsigned int mask = __ballot_sync(0xffffffff, (val1 > val2) == ascending);
-      if ((threadIdx.x & 31) == 0) {
-        if (mask != 0u && mask != 0xffffffffu) atomicAdd(&d_stats.divergentWarps, 1ULL);
-      }
-    }
-    #endif
-    if ((val1 > val2) == ascending) {
-      data[i] = val2;
-      data[partnerGlobalIdx] = val1;
-      #if ENABLE_DIAG
-      if (blockIdx.x < DIAG_SAMPLE_BLOCKS) atomicAdd(&d_stats.swaps, 1ULL);
-      #endif
-    }
-  }
-}
-
-// In-block tile sort in shared memory (ascending), then optional reverse to make descending
-__global__ void BitonicSort_localTile(int* data, int size){
-  extern __shared__ DTYPE s_array[];
-  int blockStart = blockIdx.x * blockDim.x;
-  int i = blockStart + threadIdx.x;
-  if (blockStart >= size) return;
-
-  // Load with padding
-  s_array[threadIdx.x] = (i < size) ? data[i] : INT_MAX;
-  __syncthreads();
-
-  // Full bitonic sort inside the tile to ascending order
-  for (int k = 2; k <= blockDim.x; k <<= 1) {
-    for (int j = k >> 1; j > 0; j >>= 1) {
-      int ixj = threadIdx.x ^ j;
-      if (ixj > threadIdx.x) {
-        bool ascending = ((threadIdx.x & k) == 0);
-        int a = s_array[threadIdx.x];
-        int b = s_array[ixj];
-        if ((a > b) == ascending) {
-          s_array[threadIdx.x] = b;
-          s_array[ixj] = a;
-        }
-      }
-      __syncthreads();
-    }
-  }
-
-  // For the next global stage (k = 2*blockDim), tiles must alternate ascending/descending
-  bool dirAscending = ((blockStart & (2 * blockDim.x)) == 0);
-  if (!dirAscending) {
-    int n = blockDim.x;
-    int t = threadIdx.x;
-    int mirror = n - 1 - t;
-    if (t < mirror) {
-      int tmp = s_array[t];
-      s_array[t] = s_array[mirror];
-      s_array[mirror] = tmp;
-    }
-    __syncthreads();
-  }
-
-  // Store back
-  if (i < size) data[i] = s_array[threadIdx.x];
-}
-
-// Helper function to print array
-void printArray(int* arr, int size, const char* prefix = "") {
-    printf("%s[", prefix);
-    int print_limit = (size > 20) ? 20 : size;
-    for (int i = 0; i < print_limit; i++) {
-        printf("%d", arr[i]);
-        if (i < print_limit - 1) printf(", ");
-    }
-    if (size > 20) {
-        printf("... (%d more elements)", size - 20);
-    }
-    printf("]\n");
-}
-
-bool isPowerOfTwo(int n) { return n && !(n & (n - 1)); }
-int nextPowerOfTwo(int n) { if (isPowerOfTwo(n)) return n; int p = 1; while (p < n) p <<= 1; return p; }
-
-// CPU reference
-void bitonicSortCPU(int* arr, int size) {
-    for (int k = 2; k <= size; k <<= 1) {
-        for (int j = k >> 1; j > 0; j >>= 1) {
-            for (int i = 0; i < size; i++) {
-                int partnerIdx = i ^ j;
-                if (i < partnerIdx && partnerIdx < size) {
-                    bool ascending = (i & k) == 0;
-                    if ((arr[i] > arr[partnerIdx]) == ascending) {
-                        int t = arr[i]; arr[i] = arr[partnerIdx]; arr[partnerIdx] = t;
-                    }
-                }
-            }
-        }
-    }
-}
-
-int main(int argc, char *argv[]) {
-    if (argc != 2) { LOG_ERROR("Usage: %s <array_size>", argv[0]); return 1; }
-    int original_size = atoi(argv[1]);
-    if (original_size <= 0) { LOG_ERROR("Array size must be positive"); return 1; }
-
-    LOG_INFO("Starting bitonic sort (ALT) with array size: %d", original_size);
-    int device = 0; cudaDeviceProp prop; CUDA_CHECK(cudaGetDeviceProperties(&prop, device));
-    LOG_INFO("Device: %s | SMs=%d | MaxThreads/Block=%d | MaxThreads/SM=%d | SharedMem/Block=%zu KB",
-             prop.name, prop.multiProcessorCount, prop.maxThreadsPerBlock, prop.maxThreadsPerMultiProcessor,
-             prop.sharedMemPerBlock / 1024);
-
-    int size = nextPowerOfTwo(original_size);
-    if (size != original_size) LOG_INFO("Padding array from %d to %d elements (next power of 2)", original_size, size);
-
-    int* arrCpu = (int*)malloc(size * sizeof(int)); if (!arrCpu) { LOG_ERROR("CPU alloc failed"); return 1; }
-    LOG_STAGE("Generating random array"); srand(time(NULL));
-    for (int i = 0; i < original_size; i++) arrCpu[i] = rand() % 1000;
-    for (int i = original_size; i < size; i++) arrCpu[i] = INT_MAX;
-    LOG_INFO("Original array:"); printArray(arrCpu, original_size, "  ");
-
-    // Output buffer (pinned if possible)
-    int* arrSortedGpu = nullptr; bool use_pinned_output = (cudaMallocHost(&arrSortedGpu, size * sizeof(int)) == cudaSuccess);
-    if (!use_pinned_output) { arrSortedGpu = (int*)malloc(size * sizeof(int)); if (!arrSortedGpu) { LOG_ERROR("GPU result alloc failed"); free(arrCpu); return 1; } }
-
-    LOG_STAGE("Setting up GPU memory and data transfer");
-    DTYPE* d_arr; CUDA_CHECK(cudaMalloc(&d_arr, size * sizeof(DTYPE)));
-
-    int* h_arr_pinned = nullptr; bool use_pinned_input = (cudaMallocHost(&h_arr_pinned, size * sizeof(int)) == cudaSuccess);
-    if (use_pinned_input) { memcpy(h_arr_pinned, arrCpu, size * sizeof(int)); }
-
-    LOG_DEBUG("Copying data from host to device");
-    CUDA_CHECK(cudaMemcpy(d_arr, use_pinned_input ? h_arr_pinned : arrCpu, size * sizeof(DTYPE), cudaMemcpyHostToDevice));
-    LOG_INFO("Data successfully copied to GPU");
-
-    #if ENABLE_DIAG
-    KernelStats zero_stats = {}; CUDA_CHECK(cudaMemcpyToSymbol(d_stats, &zero_stats, sizeof(KernelStats)));
-    #endif
-
-    // Timers
-    cudaEvent_t start, stop; cudaEventCreate(&start); cudaEventCreate(&stop);
-    float h2dTime, kernelTime, d2hTime;
-    cudaEventRecord(start);
-    CUDA_CHECK(cudaMemcpy(d_arr, use_pinned_input ? h_arr_pinned : arrCpu, size * sizeof(DTYPE), cudaMemcpyHostToDevice));
-    cudaEventRecord(stop); cudaEventSynchronize(stop); cudaEventElapsedTime(&h2dTime, start, stop);
-    cudaEventRecord(start);
-
-    // 1) In-block tile pre-sort using shared memory
-    LOG_STAGE("Tile pre-sort in shared memory");
-    int threadsPerBlock = THREADS_PER_BLOCK;
-    int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
-    size_t sharedMemSize = (size_t)threadsPerBlock * sizeof(DTYPE);
-    LOG_INFO("Tile config: %d blocks, %d threads, %zu bytes smem", blocksPerGrid, threadsPerBlock, sharedMemSize);
-    BitonicSort_localTile<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(d_arr, size);
-
-    // 2) Global merges starting from k = 2 * tileSize
-    LOG_STAGE("Global merges after tile sort");
-    int step_count = 0;
-    for (int k = threadsPerBlock * 2; k <= size; k <<= 1) {
-      for (int j = k >> 1; j > 0; j >>= 1) {
-        BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, size);
-        step_count++;
-      }
-    }
-
-    CUDA_CHECK(cudaDeviceSynchronize());
-    cudaEventRecord(stop); cudaEventSynchronize(stop); cudaEventElapsedTime(&kernelTime, start, stop);
-
-    // D2H transfer
-    cudaEventRecord(start);
-    if (use_pinned_output) {
-      cudaStream_t stream; CUDA_CHECK(cudaStreamCreate(&stream));
-      CUDA_CHECK(cudaMemcpyAsync(arrSortedGpu, d_arr, size * sizeof(DTYPE), cudaMemcpyDeviceToHost, stream));
-      CUDA_CHECK(cudaStreamSynchronize(stream)); CUDA_CHECK(cudaStreamDestroy(stream));
-    } else {
-      CUDA_CHECK(cudaMemcpy(arrSortedGpu, d_arr, size * sizeof(DTYPE), cudaMemcpyDeviceToHost));
-    }
-    cudaEventRecord(stop); cudaEventSynchronize(stop); cudaEventElapsedTime(&d2hTime, start, stop);
-
-    // Host diagnostics
-    double totalBytes = (double)size * sizeof(DTYPE);
-    double h2dGBs = totalBytes / (1e6 * h2dTime);
-    double d2hGBs = totalBytes / (1e6 * d2hTime);
-    int numBlocksPerSm = 0;
-    CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, BitonicSort_global, threadsPerBlock, 0));
-    double occPct = 100.0 * (double)numBlocksPerSm * (double)threadsPerBlock / (double)prop.maxThreadsPerMultiProcessor;
-
-    printf("\nPerf Diagnostics (host):\n");
-    printf("- Kernel launches (steps): %d\n", step_count + 1); // +1 for tile kernel
-    printf("- Estimated occupancy: %.1f%% (blocks/SM=%d)\n", occPct, numBlocksPerSm);
-    printf("- H2D throughput: %.2f GB/s | D2H throughput: %.2f GB/s\n", h2dGBs, d2hGBs);
-
-    #if ENABLE_DIAG
-    KernelStats h_stats; CUDA_CHECK(cudaMemcpyFromSymbol(&h_stats, d_stats, sizeof(KernelStats)));
-    int sampledBlocks = (blocksPerGrid < DIAG_SAMPLE_BLOCKS) ? blocksPerGrid : DIAG_SAMPLE_BLOCKS;
-    double scale = sampledBlocks > 0 ? ((double)blocksPerGrid / (double)sampledBlocks) : 1.0;
-    unsigned long long est_compares = (unsigned long long)(h_stats.compares * scale + 0.5);
-    unsigned long long est_swaps = (unsigned long long)(h_stats.swaps * scale + 0.5);
-    unsigned long long est_same = (unsigned long long)(h_stats.sameBlockPairs * scale + 0.5);
-    unsigned long long est_cross = (unsigned long long)(h_stats.crossBlockPairs * scale + 0.5);
-    unsigned long long divWarps = (unsigned long long)(h_stats.divergentWarps * scale + 0.5);
-    printf("\nPerf Diagnostics (device-sampled):\n");
-    printf("- Compares (estimated): %llu\n", est_compares);
-    printf("- Swaps (estimated):    %llu\n", est_swaps);
-    printf("- Same-block pairs est: %llu | Cross-block pairs est: %llu\n", est_same, est_cross);
-    printf("- Divergent warps est:  %llu\n", divWarps);
-    #endif
-
-    // CPU validation
-    LOG_STAGE("Performing CPU sort for comparison");
-    int* arrCpuSorted = (int*)malloc(size * sizeof(int)); memcpy(arrCpuSorted, arrCpu, size * sizeof(int));
-    clock_t cpuStart = clock(); bitonicSortCPU(arrCpuSorted, size); clock_t cpuEnd = clock();
-    double cpuTime = ((double)(cpuEnd - cpuStart)) / CLOCKS_PER_SEC * 1000.0;
-
-    LOG_STAGE("Validating results");
-    bool valid = true;
-    for (int i = 0; i < original_size; i++) {
-      if (arrSortedGpu[i] != arrCpuSorted[i]) {
-        LOG_ERROR("Mismatch at index %d: GPU=%d, CPU=%d", i, arrSortedGpu[i], arrCpuSorted[i]); valid = false; break;
-      }
-    }
-    if (valid) {
-      LOG_INFO("Validation successful - GPU and CPU results match!");
-      LOG_INFO("FUNCTIONAL SUCCESS"); printf("FUNCTIONAL SUCCESS\n");
-      double gpuTime = h2dTime + kernelTime + d2hTime;
-      double elementsPerSecond = (original_size / (gpuTime / 1000.0)) / 1e6;
-      printf("Array size         : %d\n", original_size);
-      printf("CPU Sort Time (ms) : %f\n", cpuTime);
-      printf("GPU Sort Time (ms) : %f\n", gpuTime);
-      printf("GPU Sort Speed     : %f million elements per second\n", elementsPerSecond);
-      if (elementsPerSecond > 1000) printf("PERF PASSING\n"); else printf("PERF FAILING (need > 1000 MOPE/s, got %.2f)\n", elementsPerSecond);
-      printf("GPU Sort is %3.0fx faster than CPU !!!\n", cpuTime / gpuTime);
-      printf("H2D Transfer Time (ms): %f\n", h2dTime);
-      printf("Kernel Time (ms)      : %f\n", kernelTime);
-      printf("D2H Transfer Time (ms): %f\n", d2hTime);
-      printf("\nOptimization Status:\n");
-      printf("- Input pinned memory: %s\n", use_pinned_input ? "YES" : "NO");
-      printf("- Output pinned memory: %s\n", use_pinned_output ? "YES" : "NO");
-    } else {
-      LOG_ERROR("FUNCTIONAL FAIL");
-    }
-
-    CUDA_CHECK(cudaFree(d_arr));
-    if (use_pinned_input) CUDA_CHECK(cudaFreeHost(h_arr_pinned));
-    if (use_pinned_output) CUDA_CHECK(cudaFreeHost(arrSortedGpu)); else free(arrSortedGpu);
-    free(arrCpu); free(arrCpuSorted);
-    return valid ? 0 : 1;
-}
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <assert.h>
-#include <time.h>
-#include <limits.h>
-#include <math.h>
-#include <float.h>
-#include <string.h>
-#include <cuda_runtime.h>
-
-typedef int DTYPE;
-
-#define CUDA_CHECK(call) \
-    do { \
-        cudaError_t error = call; \
-        if (error != cudaSuccess) { \
-            fprintf(stderr, "CUDA error at %s:%d code=%d(%s) \"%s\"\n", \
-                    __FILE__, __LINE__, error, cudaGetErrorString(error), #call); \
-            exit(1); \
-        } \
-    } while (0)
-
-// Logging macros for better debugging
-#define LOG_INFO(fmt, ...) printf("[INFO] " fmt "\n", ##__VA_ARGS__)
-#define LOG_DEBUG(fmt, ...) printf("[DEBUG] " fmt "\n", ##__VA_ARGS__)
-#define LOG_ERROR(fmt, ...) fprintf(stderr, "[ERROR] " fmt "\n", ##__VA_ARGS__)
-#define LOG_STAGE(stage) printf("\n[STAGE] %s\n", stage)
-
-// GPU Kernel for bitonic sort with global memory
-__launch_bounds__(1024, 2) __global__ void BitonicSort_global(int* __restrict__ data, int j, int k, int size){
+// Optimized GPU Kernel for bitonic sort with global memory - H100 optimized
+__global__ void __launch_bounds__(1024, 2) BitonicSort_global(int* __restrict__ data, int j, int k, int size){
   int i = blockDim.x*blockIdx.x + threadIdx.x;
   if (i >= size) return;
   
@@ -356,15 +64,39 @@ __launch_bounds__(1024, 2) __global__ void BitonicSort_global(int* __restrict__ 
     int val2 = data[partnerGlobalIdx];
 
     // Compare and swap if needed
+    #if ENABLE_DIAG
+    // Sampling only first DIAG_SAMPLE_BLOCKS blocks for diagnostics
+    if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
+      int partnerBlockIdx = partnerGlobalIdx / blockDim.x;
+      bool sameBlock = (partnerBlockIdx == blockIdx.x);
+      atomicAdd(&d_stats.compares, 1ULL);
+      if (sameBlock) {
+        atomicAdd(&d_stats.sameBlockPairs, 1ULL);
+      } else {
+        atomicAdd(&d_stats.crossBlockPairs, 1ULL);
+      }
+      unsigned int mask = __ballot_sync(0xffffffff, (val1 > val2) == ascending);
+      if ((threadIdx.x & 31) == 0) {
+        if (mask != 0u && mask != 0xffffffffu) {
+          atomicAdd(&d_stats.divergentWarps, 1ULL);
+        }
+      }
+    }
+    #endif
     if ((val1 > val2) == ascending) {
       data[i] = val2;
       data[partnerGlobalIdx] = val1;
+      #if ENABLE_DIAG
+      if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
+        atomicAdd(&d_stats.swaps, 1ULL);
+      }
+      #endif
     }
   }
 }
 
-// GPU Kernel for bitonic sort with shared memory
-__launch_bounds__(1024, 2) __global__ void BitonicSort_shared(int* __restrict__ data, int j, int k, int size){
+// Optimized GPU Kernel for bitonic sort with shared memory - H100 optimized
+__global__ void __launch_bounds__(1024, 2) BitonicSort_shared(int* __restrict__ data, int j, int k, int size){
   extern __shared__ DTYPE s_array[];
   
   int i = blockDim.x*blockIdx.x + threadIdx.x;
@@ -395,6 +127,23 @@ __launch_bounds__(1024, 2) __global__ void BitonicSort_shared(int* __restrict__ 
       val2 = data[partnerGlobalIdx];
     }
     
+    #if ENABLE_DIAG
+    if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
+      atomicAdd(&d_stats.compares, 1ULL);
+      if (sameBlock) {
+        atomicAdd(&d_stats.sameBlockPairs, 1ULL);
+      } else {
+        atomicAdd(&d_stats.crossBlockPairs, 1ULL);
+      }
+      unsigned int mask = __ballot_sync(0xffffffff, (val1 > val2) == ascending);
+      if ((threadIdx.x & 31) == 0) {
+        if (mask != 0u && mask != 0xffffffffu) {
+          atomicAdd(&d_stats.divergentWarps, 1ULL);
+        }
+      }
+    }
+    #endif
+
     // Compare and swap if needed
     if ((val1 > val2) == ascending) {
       if (sameBlock) {
@@ -404,6 +153,11 @@ __launch_bounds__(1024, 2) __global__ void BitonicSort_shared(int* __restrict__ 
         s_array[threadIdx.x] = val2;
         data[partnerGlobalIdx] = val1;
       }
+      #if ENABLE_DIAG
+      if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
+        atomicAdd(&d_stats.swaps, 1ULL);
+      }
+      #endif
     }
   }
   
@@ -475,7 +229,13 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    LOG_INFO("Starting bitonic sort with array size: %d", original_size);
+    LOG_INFO("Starting OPTIMIZED bitonic sort with array size: %d", original_size);
+    int device = 0;
+    cudaDeviceProp prop;
+    CUDA_CHECK(cudaGetDeviceProperties(&prop, device));
+    LOG_INFO("Device: %s | SMs=%d | MaxThreads/Block=%d | MaxThreads/SM=%d | SharedMem/Block=%zu KB",
+             prop.name, prop.multiProcessorCount, prop.maxThreadsPerBlock, prop.maxThreadsPerMultiProcessor,
+             prop.sharedMemPerBlock / 1024);
     
     // For bitonic sort, size must be a power of 2
     int size = nextPowerOfTwo(original_size);
@@ -549,6 +309,11 @@ int main(int argc, char *argv[]) {
                           size * sizeof(DTYPE), cudaMemcpyHostToDevice));
     LOG_INFO("Data successfully copied to GPU");
 
+    #if ENABLE_DIAG
+    KernelStats zero_stats = {};
+    CUDA_CHECK(cudaMemcpyToSymbol(d_stats, &zero_stats, sizeof(KernelStats)));
+    #endif
+
     /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
@@ -565,47 +330,73 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(start);
     /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
-    // Perform bitonic sort on GPU using shared memory
-    LOG_STAGE("Starting shared memory bitonic sort on GPU");
-    // Optimal launch configuration for H100
-    int threadsPerBlock = 1024;
+    // Perform bitonic sort on GPU using OPTIMIZED strategy
+    LOG_STAGE("Starting OPTIMIZED bitonic sort on GPU");
+    
+    // H100-optimized launch configuration
+    int threadsPerBlock = 1024;  // Increased from 512 for better occupancy
     int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
     LOG_INFO("Launch configuration: %d blocks, %d threads per block", blocksPerGrid, threadsPerBlock);
-    // Prefer larger L1 for global-memory kernel to improve bandwidth on H100
-    cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
 
     // Calculate shared memory size needed
     size_t sharedMemSize = threadsPerBlock * sizeof(DTYPE);
     LOG_DEBUG("Shared memory size: %zu bytes", sharedMemSize);
 
-    // Use smart hybrid approach: shared memory for small arrays, global memory for large arrays
+    // Note: L1 cache config not needed on H100 - unified L1/shared memory
+    // CUDA_CHECK(cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1));
+    
+    // OPTIMIZED hybrid approach: Use shared memory for more stages
     int step_count = 0;
-    if (size <= 512) {
-        // Small arrays: Use shared memory kernel (benefits from shared memory)
-        LOG_DEBUG("Using shared memory kernel for small array");
+    int shared_threshold = threadsPerBlock * 32;  // Increased threshold: use shared for up to 32K elements
+    
+    if (size <= shared_threshold) {
+        // Use shared memory kernel for better performance
+        LOG_DEBUG("Using shared memory kernel for array size %d (threshold: %d)", size, shared_threshold);
         for (int k = 2; k <= size; k *= 2) {
             for (int j = k/2; j > 0; j /= 2) {
                 BitonicSort_shared<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(d_arr, j, k, size);
                 step_count++;
-                LOG_DEBUG("Step %d: Using shared memory kernel (j=%d, k=%d)", step_count, j, k);
+                if (step_count % 50 == 0) {
+                    LOG_DEBUG("Shared kernel step %d: j=%d, k=%d", step_count, j, k);
+                }
             }
         }
         LOG_INFO("Shared memory bitonic sort completed in %d steps", step_count);
     } else {
-        // Large arrays: Use global memory kernel
-        LOG_DEBUG("Using global memory kernel for large array");
+        // Hybrid approach: use shared memory for final stages, global for early stages
+        LOG_DEBUG("Using hybrid approach for large array");
+        
+        // Use global memory for early stages (k > shared_threshold)
         for (int k = 2; k <= size; k *= 2) {
-            for (int j = k/2; j > 0; j /= 2) {
-                BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, size);
-                step_count++;
+            if (k > shared_threshold) {
+                // Global memory stages
+                for (int j = k/2; j > 0; j /= 2) {
+                    if (j > shared_threshold/2) {
+                        BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, size);
+                        step_count++;
+                    } else {
+                        // Switch to shared memory for remaining steps in this k
+                        BitonicSort_shared<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(d_arr, j, k, size);
+                        step_count++;
+                    }
+                }
+            } else {
+                // Shared memory stages for smaller k values
+                for (int j = k/2; j > 0; j /= 2) {
+                    BitonicSort_shared<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(d_arr, j, k, size);
+                    step_count++;
+                }
+            }
+            if (step_count % 50 == 0) {
+                LOG_DEBUG("Hybrid step %d: k=%d", step_count, k);
             }
         }
-        LOG_INFO("Global memory bitonic sort completed in %d steps", step_count);
+        LOG_INFO("Hybrid bitonic sort completed in %d steps", step_count);
     }
 
     CUDA_CHECK(cudaDeviceSynchronize());
-    LOG_DEBUG("Shared memory kernel completed");
-    LOG_INFO("Shared memory bitonic sort completed");
+    LOG_DEBUG("Optimized kernel completed");
+    LOG_INFO("Optimized bitonic sort completed");
 
     /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
@@ -638,6 +429,53 @@ int main(int argc, char *argv[]) {
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&d2hTime, start, stop);
     /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
+
+    // Derived throughput metrics
+    double totalBytes = (double)size * sizeof(DTYPE);
+    double h2dGBs = totalBytes / (1e6 * h2dTime);
+    double d2hGBs = totalBytes / (1e6 * d2hTime);
+
+    // Occupancy estimation
+    int numBlocksPerSm = 0;
+    size_t occupancySharedMem = 1024 * sizeof(DTYPE); // matches threadsPerBlock
+    if (size <= shared_threshold) {
+        CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, BitonicSort_shared, 1024, (int)occupancySharedMem));
+    } else {
+        CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&numBlocksPerSm, BitonicSort_global, 1024, 0));
+    }
+    double occPct = 100.0 * (double)numBlocksPerSm * 1024.0 / (double)prop.maxThreadsPerMultiProcessor;
+
+    printf("\nH100-Optimized Features Applied:\n");
+    printf("- Launch bounds: __launch_bounds__(1024, 2)\n");
+    printf("- Restrict pointers: __restrict__\n");
+    printf("- Increased threads per block: 1024 (vs 512)\n");
+    printf("- Increased shared memory threshold: %d elements\n", shared_threshold);
+    printf("- H100 unified L1/shared memory architecture\n");
+    printf("- Hybrid shared/global strategy\n");
+
+    printf("\nPerf Diagnostics (host):\n");
+    printf("- Kernel launches (steps): %d\n", step_count);
+    printf("- Estimated occupancy: %.1f%% (blocks/SM=%d)\n", occPct, numBlocksPerSm);
+    printf("- H2D throughput: %.2f GB/s | D2H throughput: %.2f GB/s\n", h2dGBs, d2hGBs);
+
+    #if ENABLE_DIAG
+    // Read device-side stats and scale by sampling ratio
+    KernelStats h_stats;
+    CUDA_CHECK(cudaMemcpyFromSymbol(&h_stats, d_stats, sizeof(KernelStats)));
+    int sampledBlocks = (blocksPerGrid < DIAG_SAMPLE_BLOCKS) ? blocksPerGrid : DIAG_SAMPLE_BLOCKS;
+    double scale = sampledBlocks > 0 ? ((double)blocksPerGrid / (double)sampledBlocks) : 1.0;
+    unsigned long long est_compares = (unsigned long long)(h_stats.compares * scale + 0.5);
+    unsigned long long est_swaps = (unsigned long long)(h_stats.swaps * scale + 0.5);
+    unsigned long long est_same = (unsigned long long)(h_stats.sameBlockPairs * scale + 0.5);
+    unsigned long long est_cross = (unsigned long long)(h_stats.crossBlockPairs * scale + 0.5);
+    unsigned long long divWarps = (unsigned long long)(h_stats.divergentWarps * scale + 0.5);
+
+    printf("\nPerf Diagnostics (device-sampled):\n");
+    printf("- Compares (estimated): %llu\n", est_compares);
+    printf("- Swaps (estimated):    %llu\n", est_swaps);
+    printf("- Same-block pairs est: %llu | Cross-block pairs est: %llu\n", est_same, est_cross);
+    printf("- Divergent warps est:  %llu\n", divWarps);
+    #endif
 
     // CPU sort for validation
     LOG_STAGE("Performing CPU sort for comparison");
@@ -728,6 +566,3 @@ int main(int argc, char *argv[]) {
     
     return valid ? 0 : 1;
 }
-
-
-
