@@ -172,9 +172,8 @@ int main(int argc, char* argv[]) {
 
 // arCpu contains the input random array
 // arrSortedGpu should contain the sorted array copied from GPU to CPU
-// Use pinned host memory for faster transfers.
+// Declare here; allocate later near D2H so H2D timing isn't affected.
 DTYPE *arrSortedGpu = nullptr;
-cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 
 // Transfer data (arr_cpu) to device 
 // Note: Bitonic sort network expects a power-of-two size. We only copy the
@@ -182,9 +181,16 @@ cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 // in the next section (counted in kernel time).
 int paddedSize = nextPowerOfTwo(size);
 DTYPE* d_arr = nullptr;
-// Allocate only N elements in the H2D-timed region
+// H2D breakdown timing for diagnostics
+cudaEvent_t h2dA, h2dB, h2dC; cudaEventCreate(&h2dA); cudaEventCreate(&h2dB); cudaEventCreate(&h2dC);
+cudaEventRecord(h2dA);
 cudaMalloc(&d_arr, (size_t)size * sizeof(DTYPE));
+cudaEventRecord(h2dB);
 cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
+cudaEventRecord(h2dC); cudaEventSynchronize(h2dC);
+float tMallocMs=0.0f, tCopyMs=0.0f; cudaEventElapsedTime(&tMallocMs, h2dA, h2dB); cudaEventElapsedTime(&tCopyMs, h2dB, h2dC);
+printf("[H2D Breakdown] cudaMalloc(N): %.3f ms | memcpy H2D(N): %.3f ms\n", tMallocMs, tCopyMs);
+cudaEventDestroy(h2dA); cudaEventDestroy(h2dB); cudaEventDestroy(h2dC);
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
@@ -244,6 +250,8 @@ cudaDeviceSynchronize();
 /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
 // Transfer sorted data back to host (copied to arrSortedGpu)
+// Allocate pinned output here so H2D timing above is not affected
+cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 cudaMemcpy(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost);
 
 
