@@ -1,80 +1,853 @@
-kernel_fusion_fixed.cu(58): warning #177-D: variable "lane_id" was declared but never referenced
-      int lane_id = threadIdx.x & 31;
-          ^
-
-Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
-
-kernel_fusion_fixed.cu(59): warning #177-D: variable "warp_id" was declared but never referenced
-      int warp_id = tid >> 5;
-          ^
-
-[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ./
-a.out                 kernel_d2h            test
-compile_optimized.sh  kernel_fusion         warp_optimized
-kernel                kernel_optimized      
-[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ./
-a.out                 kernel_d2h            test
-compile_optimized.sh  kernel_fusion         warp_optimized
-kernel                kernel_optimized      
-[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ./kernel_fusion
-[ERROR] Usage: ./kernel_fusion <array_size>
-[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ./kernel_fusion 134217728
-[INFO] Starting bitonic sort with array size: 134217728
+[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ./best 100000000
+[INFO] Starting bitonic sort with array size: 100000000
+[INFO] Padding array from 100000000 to 134217728 elements (next power of 2)
 
 [STAGE] Generating random array
 [INFO] Original array:
-  [739, 632, 550, 642, 746, 889, 857, 323, 665, 430, 694, 814, 335, 159, 295, 59, 13, 588, 458, 793... (134217708 more elements)]
-[DEBUG] Using pinned memory for input
-[DEBUG] Using pinned memory for output
+  [651, 717, 564, 598, 921, 640, 788, 471, 111, 319, 898, 470, 443, 547, 376, 30, 562, 500, 530, 971... (99999980 more elements)]
+[DEBUG] Using pinned memory for output (faster D2H transfers)
 
 [STAGE] Setting up GPU memory and data transfer
+[DEBUG] Using pinned memory for input
 [DEBUG] Copying data from host to device
 [INFO] Data successfully copied to GPU
 
-[STAGE] Starting optimized bitonic sort on GPU
-[INFO] Launch configuration: 65535 blocks, 1024 threads per block
-[INFO] Bitonic sort completed with 378 kernel launches
+[STAGE] Starting shared memory bitonic sort on GPU
+[INFO] Launch configuration: 262144 blocks, 512 threads per block
+[DEBUG] Shared memory size: 2048 bytes
+[DEBUG] Using global memory kernel for large array
+[INFO] Global memory bitonic sort completed in 378 steps
+[DEBUG] Shared memory kernel completed
+[INFO] Shared memory bitonic sort completed
 
 [STAGE] Transferring sorted data back to host
 [INFO] Sorted array:
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0... (134217708 more elements)]
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0... (99999980 more elements)]
 
 [STAGE] Performing CPU sort for comparison
 
 [STAGE] Validating results
-[ERROR] Mismatch at index 132287: GPU=1, CPU=0
-[DEBUG] GPU array around mismatch:
-  [132282]: GPU=0, CPU=0
-  [132283]: GPU=0, CPU=0
-  [132284]: GPU=0, CPU=0
-  [132285]: GPU=0, CPU=0
-  [132286]: GPU=0, CPU=0
-  [132287]: GPU=1, CPU=0 <-- MISMATCH
-  [132288]: GPU=0, CPU=0
-  [132289]: GPU=0, CPU=0
-  [132290]: GPU=0, CPU=0
-  [132291]: GPU=0, CPU=0
-[ERROR] FUNCTIONAL FAIL
-FUNCTIONAL FAIL
-[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ nvcc -arch=sm_90 -O3 -use_fast_math -o kernel_ultimate kernel_ultimate.cu
-[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ./kernel_ultimate 134217728
-[INFO] Starting bitonic sort with array size: 134217728
+[INFO] Validation successful - GPU and CPU results match!
+[INFO] FUNCTIONAL SUCCESS
+FUNCTIONAL SUCCESS
+Array size         : 100000000
+CPU Sort Time (ms) : 124161.646000
+GPU Sort Time (ms) : 170.690704
+GPU Sort Speed     : 585.854985 million elements per second
+PERF FAILING (need > 1000 MOPE/s, got 585.85)
+GPU Sort is 727x faster than CPU !!!
+H2D Transfer Time (ms): 9.690528
+Kernel Time (ms)      : 150.132446
+D2H Transfer Time (ms): 10.867744
+
+Optimization Status:
+- Input pinned memory: YES
+- Output pinned memory: YES
+[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ncu --metric sm__warps_active.avg.pct_of_peak_sustained_active --
+print-summary per-gpu best 10000000
+==ERROR== Missing executable to launch.
+-bash: print-summary: command not found
+[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ncu --metric sm__warps_active.avg.pct_of_peak_sustained_active --print-summary per-gpu best 100000000
+[INFO] Starting bitonic sort with array size: 100000000
+[INFO] Padding array from 100000000 to 134217728 elements (next power of 2)
 
 [STAGE] Generating random array
 [INFO] Original array:
-  [715, 887, 246, 12, 910, 918, 425, 511, 39, 750, 557, 467, 31, 729, 99, 154, 376, 731, 343, 658... (134217708 more elements)]
-[DEBUG] Using pinned memory with async transfers
+  [807, 703, 716, 228, 249, 242, 959, 409, 172, 276, 149, 830, 189, 258, 884, 39, 206, 796, 346, 104... (99999980 more elements)]
+==PROF== Connected to process 715393 (/home/hice1/mfajeau3/CS8803_GPU/Assigment_2/best)
+[DEBUG] Using pinned memory for output (faster D2H transfers)
 
-[STAGE] Setting up GPU memory
+[STAGE] Setting up GPU memory and data transfer
+[DEBUG] Using pinned memory for input
+[DEBUG] Copying data from host to device
+[INFO] Data successfully copied to GPU
 
-[STAGE] Running ultimate optimized bitonic sort
-[INFO] Launch config: 32768 blocks, 512 threads/block
-[INFO] Sort completed with 378 kernel launches
+[STAGE] Starting shared memory bitonic sort on GPU
+[INFO] Launch configuration: 262144 blocks, 512 threads per block
+[DEBUG] Shared memory size: 2048 bytes
+[DEBUG] Using global memory kernel for large array
+==PROF== Profiling "BitonicSort_global" - 0: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 1: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 2: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 3: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 4: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 5: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 6: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 7: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 8: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 9: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 10: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 11: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 12: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 13: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 14: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 15: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 16: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 17: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 18: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 19: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 20: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 21: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 22: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 23: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 24: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 25: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 26: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 27: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 28: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 29: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 30: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 31: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 32: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 33: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 34: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 35: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 36: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 37: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 38: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 39: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 40: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 41: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 42: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 43: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 44: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 45: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 46: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 47: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 48: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 49: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 50: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 51: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 52: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 53: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 54: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 55: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 56: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 57: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 58: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 59: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 60: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 61: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 62: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 63: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 64: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 65: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 66: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 67: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 68: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 69: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 70: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 71: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 72: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 73: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 74: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 75: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 76: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 77: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 78: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 79: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 80: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 81: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 82: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 83: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 84: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 85: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 86: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 87: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 88: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 89: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 90: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 91: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 92: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 93: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 94: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 95: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 96: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 97: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 98: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 99: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 100: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 101: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 102: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 103: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 104: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 105: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 106: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 107: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 108: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 109: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 110: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 111: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 112: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 113: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 114: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 115: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 116: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 117: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 118: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 119: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 120: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 121: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 122: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 123: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 124: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 125: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 126: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 127: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 128: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 129: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 130: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 131: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 132: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 133: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 134: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 135: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 136: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 137: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 138: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 139: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 140: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 141: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 142: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 143: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 144: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 145: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 146: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 147: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 148: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 149: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 150: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 151: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 152: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 153: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 154: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 155: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 156: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 157: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 158: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 159: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 160: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 161: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 162: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 163: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 164: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 165: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 166: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 167: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 168: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 169: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 170: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 171: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 172: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 173: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 174: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 175: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 176: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 177: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 178: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 179: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 180: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 181: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 182: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 183: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 184: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 185: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 186: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 187: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 188: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 189: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 190: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 191: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 192: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 193: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 194: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 195: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 196: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 197: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 198: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 199: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 200: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 201: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 202: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 203: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 204: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 205: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 206: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 207: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 208: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 209: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 210: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 211: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 212: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 213: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 214: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 215: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 216: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 217: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 218: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 219: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 220: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 221: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 222: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 223: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 224: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 225: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 226: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 227: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 228: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 229: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 230: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 231: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 232: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 233: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 234: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 235: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 236: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 237: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 238: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 239: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 240: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 241: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 242: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 243: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 244: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 245: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 246: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 247: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 248: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 249: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 250: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 251: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 252: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 253: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 254: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 255: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 256: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 257: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 258: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 259: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 260: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 261: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 262: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 263: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 264: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 265: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 266: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 267: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 268: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 269: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 270: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 271: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 272: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 273: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 274: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 275: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 276: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 277: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 278: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 279: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 280: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 281: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 282: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 283: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 284: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 285: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 286: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 287: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 288: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 289: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 290: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 291: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 292: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 293: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 294: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 295: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 296: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 297: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 298: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 299: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 300: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 301: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 302: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 303: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 304: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 305: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 306: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 307: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 308: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 309: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 310: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 311: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 312: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 313: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 314: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 315: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 316: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 317: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 318: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 319: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 320: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 321: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 322: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 323: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 324: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 325: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 326: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 327: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 328: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 329: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 330: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 331: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 332: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 333: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 334: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 335: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 336: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 337: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 338: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 339: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 340: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 341: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 342: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 343: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 344: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 345: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 346: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 347: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 348: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 349: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 350: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 351: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 352: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 353: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 354: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 355: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 356: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 357: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 358: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 359: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 360: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 361: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 362: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 363: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 364: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 365: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 366: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 367: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 368: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 369: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 370: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 371: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 372: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 373: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 374: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 375: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 376: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 377: 0%....50%....100% - 1 pass
+[INFO] Global memory bitonic sort completed in 378 steps
+[DEBUG] Shared memory kernel completed
+[INFO] Shared memory bitonic sort completed
+
+[STAGE] Transferring sorted data back to host
 [INFO] Sorted array:
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0... (134217708 more elements)]
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0... (99999980 more elements)]
+
+[STAGE] Performing CPU sort for comparison
 
 [STAGE] Validating results
-[ERROR] Mismatch at index 64991: GPU=1, CPU=0
-[ERROR] FUNCTIONAL FAIL
-FUNCTIONAL FAIL
-[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ 
+[INFO] Validation successful - GPU and CPU results match!
+[INFO] FUNCTIONAL SUCCESS
+FUNCTIONAL SUCCESS
+Array size         : 100000000
+CPU Sort Time (ms) : 123025.440000
+GPU Sort Time (ms) : 5408.871094
+GPU Sort Speed     : 18.488146 million elements per second
+PERF FAILING (need > 1000 MOPE/s, got 18.49)
+GPU Sort is  23x faster than CPU !!!
+H2D Transfer Time (ms): 9.694176
+Kernel Time (ms)      : 5388.204590
+D2H Transfer Time (ms): 10.972384
+
+Optimization Status:
+- Input pinned memory: YES
+- Output pinned memory: YES
+==PROF== Disconnected from process 715393
+[715393] best@127.0.0.1
+  Device 0, CC 9.0
+    BitonicSort_global(int *, int, int, int) (262144, 1, 1)x(512, 1, 1), Invocations 378
+      Section: Command line profiler metrics
+      ------------------------------------------------- ----------- ------- ------- -------
+      Metric Name                                       Metric Unit Minimum Maximum Average
+      ------------------------------------------------- ----------- ------- ------- -------
+      sm__warps_active.avg.pct_of_peak_sustained_active           %   48.83   73.76   65.16
+      ------------------------------------------------- ----------- ------- ------- -------
+
+  Note: The shown averages are calculated as the arithmetic mean of the metric values after the evaluation of the    
+  metrics for each individual kernel launch.                                                                         
+  If aggregating across varying launch configurations (like shared memory, cache config settings), the arithmetic    
+  mean can be misleading and looking at the individual results is recommended instead.                               
+  This output mode is backwards compatible to the per-kernel summary output of nvprof                                
+
+[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ncu --metric sm__warps_active.avg.pct_of_peak_sustained_elapsed --print-summary per-gpu best 10000000
+                                    
+[INFO] Starting bitonic sort with array size: 10000000       
+[INFO] Padding array from 10000000 to 16777216 elements (next power of 2)
+
+[STAGE] Generating random array
+[INFO] Original array:
+  [338, 315, 111, 62, 897, 766, 650, 915, 217, 50, 127, 114, 649, 213, 418, 31, 188, 913, 875, 92... (9999980 more elements)]
+==PROF== Connected to process 718770 (/home/hice1/mfajeau3/CS8803_GPU/Assigment_2/best)
+[DEBUG] Using pinned memory for output (faster D2H transfers)
+
+[STAGE] Setting up GPU memory and data transfer
+[DEBUG] Using pinned memory for input
+[DEBUG] Copying data from host to device
+[INFO] Data successfully copied to GPU
+
+[STAGE] Starting shared memory bitonic sort on GPU
+[INFO] Launch configuration: 32768 blocks, 512 threads per block
+[DEBUG] Shared memory size: 2048 bytes
+[DEBUG] Using global memory kernel for large array
+==PROF== Profiling "BitonicSort_global" - 0: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 1: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 2: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 3: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 4: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 5: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 6: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 7: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 8: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 9: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 10: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 11: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 12: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 13: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 14: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 15: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 16: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 17: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 18: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 19: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 20: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 21: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 22: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 23: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 24: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 25: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 26: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 27: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 28: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 29: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 30: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 31: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 32: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 33: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 34: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 35: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 36: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 37: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 38: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 39: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 40: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 41: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 42: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 43: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 44: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 45: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 46: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 47: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 48: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 49: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 50: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 51: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 52: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 53: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 54: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 55: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 56: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 57: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 58: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 59: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 60: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 61: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 62: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 63: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 64: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 65: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 66: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 67: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 68: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 69: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 70: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 71: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 72: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 73: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 74: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 75: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 76: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 77: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 78: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 79: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 80: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 81: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 82: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 83: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 84: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 85: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 86: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 87: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 88: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 89: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 90: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 91: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 92: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 93: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 94: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 95: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 96: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 97: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 98: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 99: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 100: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 101: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 102: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 103: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 104: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 105: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 106: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 107: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 108: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 109: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 110: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 111: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 112: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 113: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 114: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 115: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 116: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 117: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 118: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 119: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 120: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 121: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 122: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 123: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 124: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 125: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 126: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 127: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 128: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 129: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 130: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 131: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 132: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 133: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 134: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 135: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 136: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 137: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 138: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 139: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 140: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 141: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 142: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 143: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 144: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 145: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 146: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 147: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 148: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 149: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 150: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 151: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 152: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 153: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 154: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 155: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 156: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 157: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 158: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 159: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 160: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 161: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 162: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 163: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 164: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 165: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 166: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 167: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 168: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 169: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 170: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 171: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 172: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 173: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 174: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 175: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 176: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 177: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 178: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 179: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 180: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 181: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 182: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 183: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 184: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 185: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 186: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 187: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 188: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 189: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 190: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 191: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 192: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 193: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 194: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 195: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 196: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 197: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 198: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 199: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 200: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 201: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 202: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 203: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 204: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 205: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 206: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 207: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 208: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 209: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 210: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 211: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 212: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 213: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 214: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 215: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 216: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 217: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 218: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 219: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 220: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 221: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 222: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 223: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 224: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 225: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 226: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 227: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 228: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 229: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 230: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 231: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 232: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 233: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 234: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 235: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 236: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 237: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 238: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 239: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 240: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 241: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 242: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 243: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 244: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 245: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 246: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 247: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 248: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 249: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 250: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 251: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 252: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 253: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 254: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 255: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 256: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 257: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 258: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 259: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 260: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 261: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 262: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 263: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 264: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 265: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 266: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 267: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 268: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 269: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 270: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 271: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 272: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 273: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 274: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 275: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 276: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 277: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 278: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 279: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 280: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 281: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 282: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 283: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 284: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 285: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 286: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 287: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 288: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 289: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 290: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 291: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 292: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 293: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 294: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 295: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 296: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 297: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 298: 0%....50%....100% - 1 pass
+==PROF== Profiling "BitonicSort_global" - 299: 0%....50%....100% - 1 pass
+[INFO] Global memory bitonic sort completed in 300 steps
+[DEBUG] Shared memory kernel completed
+[INFO] Shared memory bitonic sort completed
+
+[STAGE] Transferring sorted data back to host
+[INFO] Sorted array:
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0... (9999980 more elements)]
+
+[STAGE] Performing CPU sort for comparison
+
+[STAGE] Validating results
+[INFO] Validation successful - GPU and CPU results match!
+[INFO] FUNCTIONAL SUCCESS
+FUNCTIONAL SUCCESS
+Array size         : 10000000
+CPU Sort Time (ms) : 12111.538000
+GPU Sort Time (ms) : 8038.187500
+GPU Sort Speed     : 1.244062 million elements per second
+PERF FAILING (need > 1000 MOPE/s, got 1.24)
+GPU Sort is   2x faster than CPU !!!
+H2D Transfer Time (ms): 2.623776
+Kernel Time (ms)      : 8032.680176
+D2H Transfer Time (ms): 2.884000
+
+Optimization Status:
+- Input pinned memory: YES
+- Output pinned memory: YES
+==PROF== Disconnected from process 718770
+[718770] best@127.0.0.1
+  Device 0, CC 9.0
+    BitonicSort_global(int *, int, int, int) (32768, 1, 1)x(512, 1, 1), Invocations 300
+      Section: Command line profiler metrics
+      -------------------------------------------------- ----------- ------- ------- -------
+      Metric Name                                        Metric Unit Minimum Maximum Average
+      -------------------------------------------------- ----------- ------- ------- -------
+      sm__warps_active.avg.pct_of_peak_sustained_elapsed           %   46.79   70.15   62.48
+      -------------------------------------------------- ----------- ------- ------- -------
+
+  Note: The shown averages are calculated as the arithmetic mean of the metric values after the evaluation of the    
+  metrics for each individual kernel launch.                                                                         
+  If aggregating across varying launch configurations (like shared memory, cache config settings), the arithmetic    
+  mean can be misleading and looking at the individual results is recommended instead.                               
+  This output mode is backwards compatible to the per-kernel summary output of nvprof    
