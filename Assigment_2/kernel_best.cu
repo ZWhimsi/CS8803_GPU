@@ -55,6 +55,7 @@ __global__ void BitonicSort_global(int* __restrict__ data, int j, int k, int siz
   const int threadId = blockDim.x * blockIdx.x + threadIdx.x;
   const int stride = blockDim.x * gridDim.x;
 
+  #pragma unroll 2
   for (int i = threadId; i < size; i += stride) {
     const int partnerGlobalIdx = i ^ j;
 
@@ -208,6 +209,64 @@ __global__ void BitonicSort_shared_batched(int* __restrict__ data, int k, int si
   if (i < size) {
     data[i] = s_array[threadIdx.x];
   }
+}
+
+// GPU Kernel that batches j phases for a 2x tile (handles j < 2*blockDim.x)
+__global__ void BitonicSort_shared_batched_2x(int* __restrict__ data, int k, int size){
+  extern __shared__ DTYPE s_array[]; // size: 2 * blockDim.x
+
+  const int base = (blockIdx.x * blockDim.x) << 1; // 2 * blockDim per block
+  const int tid  = threadIdx.x;
+
+  // Two logical indices per thread
+  const int g0 = base + tid;
+  const int g1 = g0 + blockDim.x;
+
+  // Load two elements
+  s_array[tid] = (g0 < size) ? data[g0] : INT_MAX;
+  s_array[tid + blockDim.x] = (g1 < size) ? data[g1] : INT_MAX;
+  __syncthreads();
+
+  // Process all jj within 2*blockDim for this k
+  for (int jj = min(k >> 1, blockDim.x); jj > 0; jj >>= 1) {
+    // First logical index
+    {
+      const int lid = tid;
+      const int partner = lid ^ jj;
+      if (lid < partner) {
+        const int gi = base + lid;
+        const bool ascending = ((gi & k) == 0);
+        int a = s_array[lid];
+        int b = s_array[partner];
+        if ((a > b) == ascending) {
+          s_array[lid] = b;
+          s_array[partner] = a;
+        }
+      }
+    }
+    __syncthreads();
+
+    // Second logical index
+    {
+      const int lid = tid + blockDim.x;
+      const int partner = lid ^ jj;
+      if (lid < partner) {
+        const int gi = base + lid;
+        const bool ascending = ((gi & k) == 0);
+        int a = s_array[lid];
+        int b = s_array[partner];
+        if ((a > b) == ascending) {
+          s_array[lid] = b;
+          s_array[partner] = a;
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  // Store back
+  if (g0 < size) data[g0] = s_array[tid];
+  if (g1 < size) data[g1] = s_array[tid + blockDim.x];
 }
 
 // Helper function to print array
@@ -382,21 +441,24 @@ int main(int argc, char *argv[]) {
   LOG_INFO("Launch configuration: %d blocks, %d threads per block", blocksPerGrid, threadsPerBlock);
 
   size_t sharedMemSize = threadsPerBlock * sizeof(DTYPE);
-  LOG_DEBUG("Shared memory size: %zu bytes", sharedMemSize);
+  size_t sharedMemSize2x = 2 * threadsPerBlock * sizeof(DTYPE);
+  LOG_DEBUG("Shared memory size: %zu bytes | 2x tile: %zu bytes", sharedMemSize, sharedMemSize2x);
 
   int step_count = 0;
   for (int k = 2; k <= size; k <<= 1) {
     int j = k >> 1;
 
-    // Global passes while partners may cross blocks
-    for (; j >= threadsPerBlock; j >>= 1) {
+    // Global passes while partners cross 2x tiles
+    for (; j >= (threadsPerBlock << 1); j >>= 1) {
       BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, size);
       step_count++;
     }
 
-    // One batched shared-memory pass per k for all remaining j
+    // One batched shared-memory 2x-tile pass per k for remaining j
     if (j > 0) {
-      BitonicSort_shared_batched<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(d_arr, k, size);
+      // Use half as many blocks since each block covers 2*blockDim
+      int blocks2x = (blocksPerGrid + 1) >> 1;
+      BitonicSort_shared_batched_2x<<<blocks2x, threadsPerBlock, sharedMemSize2x>>>(d_arr, k, size);
       step_count++;
     }
   }
