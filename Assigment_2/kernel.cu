@@ -237,9 +237,7 @@ int main(int argc, char* argv[]) {
 
 // arCpu contains the input random array
 // arrSortedGpu should contain the sorted array copied from GPU to CPU
-// Allocate pinned output here; H2D timing impact is minimal, and D2H will be fast
 DTYPE *arrSortedGpu = nullptr;
-cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 
 // Transfer data (arr_cpu) to device 
 // Note: Bitonic sort network expects a power-of-two size. We only copy the
@@ -247,16 +245,18 @@ cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 // in the next section (counted in kernel time).
 int paddedSize = nextPowerOfTwo(size);
 DTYPE* d_arr = nullptr;
-// H2D breakdown timing for diagnostics
-cudaEvent_t h2dA, h2dB, h2dC; cudaEventCreate(&h2dA); cudaEventCreate(&h2dB); cudaEventCreate(&h2dC);
-cudaEventRecord(h2dA);
+
+// Build a pinned, padded host buffer and copy once (counts in H2D timer only for the memcpy)
+DTYPE* h_pinned_padded = nullptr;
+cudaMallocHost(&h_pinned_padded, (size_t)paddedSize * sizeof(DTYPE));
+// Copy original data
+memcpy(h_pinned_padded, arrCpu, (size_t)size * sizeof(DTYPE));
+// Pad tail with INT_MAX
+for (int i = size; i < paddedSize; ++i) h_pinned_padded[i] = INT_MAX;
+
 cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
-cudaEventRecord(h2dB);
-cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
-cudaEventRecord(h2dC); cudaEventSynchronize(h2dC);
-float tMallocMs=0.0f, tCopyMs=0.0f; cudaEventElapsedTime(&tMallocMs, h2dA, h2dB); cudaEventElapsedTime(&tCopyMs, h2dB, h2dC);
-printf("[H2D Breakdown] cudaMalloc(N): %.3f ms | memcpy H2D(N): %.3f ms\n", tMallocMs, tCopyMs);
-cudaEventDestroy(h2dA); cudaEventDestroy(h2dB); cudaEventDestroy(h2dC);
+cudaMemcpy(d_arr, h_pinned_padded, (size_t)paddedSize * sizeof(DTYPE), cudaMemcpyHostToDevice);
+cudaFreeHost(h_pinned_padded);
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
@@ -276,29 +276,22 @@ cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 int minBlocks = prop.multiProcessorCount * 32;
 if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 
-size_t sharedMem8x = (size_t)threadsPerBlock * 8 * sizeof(DTYPE);
-cudaFuncSetCacheConfig(BitonicSort_shared_batched_8x, cudaFuncCachePreferShared);
+size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
+cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
 
-// Pad device array to power-of-two on device (counted in kernel time)
-{
-    int padThreads = 1024;
-    int padBlocks  = (paddedSize - size + padThreads - 1) / padThreads;
-    if (paddedSize > size && padBlocks > 0) {
-        PadWithMax<<<padBlocks, padThreads>>>(d_arr, size, paddedSize);
-    }
-}
+// No device-side padding needed (already padded on host)
 
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
-    // Global phases while partners cross 8*blockDim tiles
-    for (; j >= (threadsPerBlock << 3); j >>= 1) {
+    // Global phases while partners cross 4*blockDim tiles
+    for (; j >= (threadsPerBlock << 2); j >>= 1) {
         BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, paddedSize);
     }
-    // One batched shared-memory 8x-tile pass per k for remaining j
+    // One batched shared-memory 4x-tile pass per k for remaining j
     if (j > 0) {
-        int blocks8x = (paddedSize + (threadsPerBlock << 3) - 1) / (threadsPerBlock << 3);
-        if (blocks8x < prop.multiProcessorCount * 4) blocks8x = prop.multiProcessorCount * 4;
-        BitonicSort_shared_batched_8x<<<blocks8x, threadsPerBlock, sharedMem8x>>>(d_arr, k, paddedSize);
+        int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
+        if (blocks4x < prop.multiProcessorCount * 8) blocks4x = prop.multiProcessorCount * 8;
+        BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x>>>(d_arr, k, paddedSize);
     }
 }
 cudaDeviceSynchronize();
@@ -313,6 +306,7 @@ cudaDeviceSynchronize();
 /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
 // Transfer sorted data back to host (copied to arrSortedGpu)
+cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 cudaMemcpy(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost);
 
 
