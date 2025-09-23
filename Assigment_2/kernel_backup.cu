@@ -242,7 +242,7 @@ int main(int argc, char* argv[]) {
 
     LOG_STAGE("Generating random array");
     for (int i = 0; i < size; i++) {
-        arrCpu[i] = rand() % 1000;
+        arrClogspu[i] = rand() % 1000;
     }
     
     LOG_INFO("Original array:");

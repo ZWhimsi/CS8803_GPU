@@ -25,7 +25,7 @@ typedef int DTYPE;
 #define LOG_ERROR(fmt, ...) fprintf(stderr, "[ERROR] " fmt "\n", ##__VA_ARGS__)
 #define LOG_STAGE(stage) printf("\n[STAGE] %s\n", stage)
 
-// Optimized global kernel with loop unrolling
+// Optimized global kernel with memory coalescing
 __global__ void BitonicSort_global(int* data, int j, int k, int size){
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
@@ -48,32 +48,7 @@ __global__ void BitonicSort_global(int* data, int j, int k, int size){
     }
 }
 
-// Warp-optimized kernel using shuffle operations
-__global__ void BitonicSort_warp(int* data, int j, int k, int size) {
-    int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    
-    if (tid >= size) return;
-    
-    // For j < 32, we can use warp shuffles
-    if (j < 32) {
-        int val = data[tid];
-        unsigned mask = 0xFFFFFFFF;
-        int partner_val = __shfl_xor_sync(mask, val, j);
-        int partner_tid = tid ^ j;
-        
-        if (partner_tid < size && tid < partner_tid) {
-            bool ascending = (tid & k) == 0;
-            
-            // Standard bitonic compare and swap
-            if ((val > partner_val) == ascending) {
-                data[tid] = partner_val;
-                data[partner_tid] = val;
-            }
-        }
-    }
-}
-
-// GPU Kernel for bitonic sort with shared memory
+// Shared memory kernel for small subsequences
 __global__ void BitonicSort_shared(int* data, int j, int k, int size){
     extern __shared__ DTYPE s_array[];
     
@@ -87,7 +62,7 @@ __global__ void BitonicSort_shared(int* data, int j, int k, int size){
     }
     __syncthreads();
     
-    // Only process if both elements are within bounds
+    // Only process if within bounds
     if (tid < size) {
         int partnerIdx = tid ^ j;
         
@@ -208,9 +183,10 @@ int main(int argc, char *argv[]) {
     LOG_INFO("Original array:");
     printArray(arrCpu, original_size, "  ");
     
-    // Allocate pinned memory for faster transfers
+    // Try to allocate pinned memory for faster transfers
     int* h_arr_pinned = nullptr;
     int* h_result_pinned = nullptr;
+    cudaStream_t stream = 0;
     
     cudaError_t pinned_in = cudaMallocHost(&h_arr_pinned, size * sizeof(int));
     cudaError_t pinned_out = cudaMallocHost(&h_result_pinned, size * sizeof(int));
@@ -220,13 +196,14 @@ int main(int argc, char *argv[]) {
     
     if (use_pinned_input) {
         memcpy(h_arr_pinned, arrCpu, size * sizeof(int));
-        LOG_DEBUG("Using pinned memory for input");
+        CUDA_CHECK(cudaStreamCreate(&stream));
+        LOG_DEBUG("Using pinned memory for input (faster H2D)");
     } else {
         LOG_DEBUG("Using regular memory for input");
     }
     
     if (use_pinned_output) {
-        LOG_DEBUG("Using pinned memory for output");
+        LOG_DEBUG("Using pinned memory for output (faster D2H)");
     } else {
         h_result_pinned = (int*)malloc(size * sizeof(int));
         LOG_DEBUG("Using regular memory for output");
@@ -238,7 +215,7 @@ int main(int argc, char *argv[]) {
     DTYPE* d_arr;
     CUDA_CHECK(cudaMalloc(&d_arr, size * sizeof(DTYPE)));
 
-    // Initial data transfer
+    // Initial data copy
     LOG_DEBUG("Copying data from host to device");
     CUDA_CHECK(cudaMemcpy(d_arr, use_pinned_input ? h_arr_pinned : arrCpu, 
                           size * sizeof(DTYPE), cudaMemcpyHostToDevice));
@@ -252,8 +229,14 @@ int main(int argc, char *argv[]) {
 
     // Measure H2D transfer
     cudaEventRecord(start);
-    CUDA_CHECK(cudaMemcpy(d_arr, use_pinned_input ? h_arr_pinned : arrCpu, 
-                          size * sizeof(DTYPE), cudaMemcpyHostToDevice));
+    if (use_pinned_input && stream) {
+        CUDA_CHECK(cudaMemcpyAsync(d_arr, h_arr_pinned, size * sizeof(DTYPE), 
+                                   cudaMemcpyHostToDevice, stream));
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+    } else {
+        CUDA_CHECK(cudaMemcpy(d_arr, use_pinned_input ? h_arr_pinned : arrCpu, 
+                              size * sizeof(DTYPE), cudaMemcpyHostToDevice));
+    }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&h2dTime, start, stop);
@@ -262,32 +245,32 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(start);
 
     // Perform bitonic sort on GPU
-    LOG_STAGE("Starting optimized bitonic sort on GPU");
+    LOG_STAGE("Starting robust bitonic sort on GPU");
     
-    // OPTIMIZATION: Use 1024 threads for H100
-    int threadsPerBlock = 1024;
+    // Optimal configuration for H100
+    int threadsPerBlock = 512;  // Sweet spot for H100
     int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
     
-    // Limit grid size to avoid overhead
-    blocksPerGrid = min(blocksPerGrid, 65535);
+    // Limit grid size to prevent overhead
+    if (blocksPerGrid > 65535) {
+        blocksPerGrid = 65535;
+        LOG_DEBUG("Capping grid size to 65535 blocks");
+    }
     
     LOG_INFO("Launch configuration: %d blocks, %d threads per block", blocksPerGrid, threadsPerBlock);
     
     size_t sharedMemSize = threadsPerBlock * sizeof(DTYPE);
     int kernel_launches = 0;
     
-    // Main bitonic sort loop
+    // Main bitonic sort loop - simple and robust
     for (int k = 2; k <= size; k *= 2) {
         for (int j = k/2; j > 0; j /= 2) {
             
-            if (j < 32) {
-                // Use warp shuffle for very small j
-                BitonicSort_warp<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, size);
-            } else if (j < threadsPerBlock && k <= 2048) {
-                // Use shared memory when partners are likely in same block
+            // Use shared memory only when we're sure partners are in same block
+            if (j < threadsPerBlock && k <= threadsPerBlock * 2) {
                 BitonicSort_shared<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(d_arr, j, k, size);
             } else {
-                // Use global memory for large j values
+                // Use global memory for all other cases
                 BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, size);
             }
             
@@ -306,8 +289,14 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(start);
     
     LOG_STAGE("Transferring sorted data back to host");
-    CUDA_CHECK(cudaMemcpy(use_pinned_output ? h_result_pinned : arrCpu, d_arr, 
-                          size * sizeof(DTYPE), cudaMemcpyDeviceToHost));
+    if (use_pinned_output && stream) {
+        CUDA_CHECK(cudaMemcpyAsync(h_result_pinned, d_arr, size * sizeof(DTYPE), 
+                                   cudaMemcpyDeviceToHost, stream));
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+    } else {
+        CUDA_CHECK(cudaMemcpy(h_result_pinned, d_arr, size * sizeof(DTYPE), 
+                              cudaMemcpyDeviceToHost));
+    }
     
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -316,7 +305,7 @@ int main(int argc, char *argv[]) {
 
     // Show sorted array (only original elements, not padding)
     LOG_INFO("Sorted array:");
-    printArray(use_pinned_output ? h_result_pinned : arrCpu, original_size, "  ");
+    printArray(h_result_pinned, original_size, "  ");
 
     // CPU sort for validation
     LOG_STAGE("Performing CPU sort for comparison");
@@ -331,14 +320,13 @@ int main(int argc, char *argv[]) {
     // Validate results (only check original elements, not padding)
     LOG_STAGE("Validating results");
     bool valid = true;
-    int* gpu_result = use_pinned_output ? h_result_pinned : arrCpu;
     
     for (int i = 0; i < original_size; i++) {
-        if (gpu_result[i] != arrCpuSorted[i]) {
-            LOG_ERROR("Mismatch at index %d: GPU=%d, CPU=%d", i, gpu_result[i], arrCpuSorted[i]);
+        if (h_result_pinned[i] != arrCpuSorted[i]) {
+            LOG_ERROR("Mismatch at index %d: GPU=%d, CPU=%d", i, h_result_pinned[i], arrCpuSorted[i]);
             LOG_DEBUG("GPU array around mismatch:");
             for (int j = max(0, i-5); j < min(original_size, i+5); j++) {
-                printf("  [%d]: GPU=%d, CPU=%d%s\n", j, gpu_result[j], arrCpuSorted[j], 
+                printf("  [%d]: GPU=%d, CPU=%d%s\n", j, h_result_pinned[j], arrCpuSorted[j], 
                        (j == i) ? " <-- MISMATCH" : "");
             }
             valid = false;
@@ -375,8 +363,8 @@ int main(int argc, char *argv[]) {
         printf("- Input pinned memory: %s\n", use_pinned_input ? "YES" : "NO");
         printf("- Output pinned memory: %s\n", use_pinned_output ? "YES" : "NO");
         printf("- Kernel launches: %d\n", kernel_launches);
-        printf("- Warp shuffles: Used for j < 32\n");
-        printf("- Shared memory: Used for j < %d when k <= 2048\n", threadsPerBlock);
+        printf("- Thread configuration: %d threads/block\n", threadsPerBlock);
+        printf("- Shared memory: Used when j < %d and k <= %d\n", threadsPerBlock, threadsPerBlock * 2);
     } else {
         LOG_ERROR("FUNCTIONAL FAIL");
         printf("FUNCTIONAL FAIL\n");
@@ -384,6 +372,9 @@ int main(int argc, char *argv[]) {
 
     // Clean up
     CUDA_CHECK(cudaFree(d_arr));
+    if (stream) {
+        CUDA_CHECK(cudaStreamDestroy(stream));
+    }
     if (use_pinned_input) {
         CUDA_CHECK(cudaFreeHost(h_arr_pinned));
     }

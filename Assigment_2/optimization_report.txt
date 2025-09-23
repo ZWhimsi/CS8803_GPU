@@ -14,6 +14,12 @@ Current Best Performance (kernel_best.cu):
 - D2H Transfer: 10.93ms
 - Total Time: 193.93ms
 
+Latest Results (601 MOPE/s):
+=============================
+- Warp optimization attempt showed regression
+- Kernel fusion and vectorization attempts had functional failures
+- Main bottleneck remains kernel time (~145ms needed vs 173ms current)
+
 Key Optimizations Implemented:
 ==============================
 

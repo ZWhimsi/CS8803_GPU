@@ -1,0 +1,80 @@
+kernel_fusion_fixed.cu(58): warning #177-D: variable "lane_id" was declared but never referenced
+      int lane_id = threadIdx.x & 31;
+          ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+kernel_fusion_fixed.cu(59): warning #177-D: variable "warp_id" was declared but never referenced
+      int warp_id = tid >> 5;
+          ^
+
+[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ./
+a.out                 kernel_d2h            test
+compile_optimized.sh  kernel_fusion         warp_optimized
+kernel                kernel_optimized      
+[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ./
+a.out                 kernel_d2h            test
+compile_optimized.sh  kernel_fusion         warp_optimized
+kernel                kernel_optimized      
+[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ./kernel_fusion
+[ERROR] Usage: ./kernel_fusion <array_size>
+[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ./kernel_fusion 134217728
+[INFO] Starting bitonic sort with array size: 134217728
+
+[STAGE] Generating random array
+[INFO] Original array:
+  [739, 632, 550, 642, 746, 889, 857, 323, 665, 430, 694, 814, 335, 159, 295, 59, 13, 588, 458, 793... (134217708 more elements)]
+[DEBUG] Using pinned memory for input
+[DEBUG] Using pinned memory for output
+
+[STAGE] Setting up GPU memory and data transfer
+[DEBUG] Copying data from host to device
+[INFO] Data successfully copied to GPU
+
+[STAGE] Starting optimized bitonic sort on GPU
+[INFO] Launch configuration: 65535 blocks, 1024 threads per block
+[INFO] Bitonic sort completed with 378 kernel launches
+
+[STAGE] Transferring sorted data back to host
+[INFO] Sorted array:
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0... (134217708 more elements)]
+
+[STAGE] Performing CPU sort for comparison
+
+[STAGE] Validating results
+[ERROR] Mismatch at index 132287: GPU=1, CPU=0
+[DEBUG] GPU array around mismatch:
+  [132282]: GPU=0, CPU=0
+  [132283]: GPU=0, CPU=0
+  [132284]: GPU=0, CPU=0
+  [132285]: GPU=0, CPU=0
+  [132286]: GPU=0, CPU=0
+  [132287]: GPU=1, CPU=0 <-- MISMATCH
+  [132288]: GPU=0, CPU=0
+  [132289]: GPU=0, CPU=0
+  [132290]: GPU=0, CPU=0
+  [132291]: GPU=0, CPU=0
+[ERROR] FUNCTIONAL FAIL
+FUNCTIONAL FAIL
+[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ nvcc -arch=sm_90 -O3 -use_fast_math -o kernel_ultimate kernel_ultimate.cu
+[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ ./kernel_ultimate 134217728
+[INFO] Starting bitonic sort with array size: 134217728
+
+[STAGE] Generating random array
+[INFO] Original array:
+  [715, 887, 246, 12, 910, 918, 425, 511, 39, 750, 557, 467, 31, 729, 99, 154, 376, 731, 343, 658... (134217708 more elements)]
+[DEBUG] Using pinned memory with async transfers
+
+[STAGE] Setting up GPU memory
+
+[STAGE] Running ultimate optimized bitonic sort
+[INFO] Launch config: 32768 blocks, 512 threads/block
+[INFO] Sort completed with 378 kernel launches
+[INFO] Sorted array:
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0... (134217708 more elements)]
+
+[STAGE] Validating results
+[ERROR] Mismatch at index 64991: GPU=1, CPU=0
+[ERROR] FUNCTIONAL FAIL
+FUNCTIONAL FAIL
+[mfajeau3@atl1-1-03-011-8-0 Assigment_2]$ 
