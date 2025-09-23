@@ -50,3 +50,4 @@ for i in {2..4}; do
     ./kernel_optimized $ARRAY_SIZE | grep -E "GPU Sort Speed|H2D Transfer|Kernel Time|D2H Transfer"
     echo ""
 done
+
