@@ -154,9 +154,8 @@ int main(int argc, char* argv[]) {
 
     srand(time(NULL));
 
-    // Allocate input array in pinned host memory for fast H2D
-    DTYPE* arrCpu = nullptr;
-    cudaMallocHost(&arrCpu, size * sizeof(DTYPE));
+    // Allocate input array (template default)
+    DTYPE* arrCpu = (DTYPE*)malloc(size * sizeof(DTYPE));
 
     for (int i = 0; i < size; i++) {
         arrCpu[i] = rand() % 1000;
@@ -183,7 +182,8 @@ cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 // in the next section (counted in kernel time).
 int paddedSize = nextPowerOfTwo(size);
 DTYPE* d_arr = nullptr;
-cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
+// Allocate only N elements in the H2D-timed region
+cudaMalloc(&d_arr, (size_t)size * sizeof(DTYPE));
 cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
@@ -207,7 +207,12 @@ if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
 
-// Pad device array with INT_MAX (not counted in H2D time)
+// Enlarge device buffer to paddedSize and pad on device (counted in kernel time)
+DTYPE* d_arr_pad = nullptr;
+cudaMalloc(&d_arr_pad, (size_t)paddedSize * sizeof(DTYPE));
+cudaMemcpy(d_arr_pad, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToDevice);
+cudaFree(d_arr);
+d_arr = d_arr_pad;
 {
     int padThreads = 1024;
     int padBlocks  = (paddedSize - size + padThreads - 1) / padThreads;
@@ -264,7 +269,7 @@ cudaMemcpy(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceTo
         }
     }
 
-    cudaFreeHost(arrCpu);
+    free(arrCpu);
     cudaFreeHost(arrSortedGpu);
 
     if (match)
