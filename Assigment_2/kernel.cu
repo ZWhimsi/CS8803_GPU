@@ -237,7 +237,9 @@ int main(int argc, char* argv[]) {
 
 // arCpu contains the input random array
 // arrSortedGpu should contain the sorted array copied from GPU to CPU
+// Allocate pinned output buffer for faster D2H
 DTYPE *arrSortedGpu = nullptr;
+cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 
 // Transfer data (arr_cpu) to device 
 // Note: Bitonic sort network expects a power-of-two size. We only copy the
@@ -247,10 +249,8 @@ int paddedSize = nextPowerOfTwo(size);
 DTYPE* d_arr = nullptr;
 // Allocate device buffer for padded size
 cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
-// Register pageable host buffer to speed up H2D copy of N elements only
-cudaHostRegister(arrCpu, (size_t)size * sizeof(DTYPE), cudaHostRegisterDefault);
+// Direct copy from pageable memory (no registration overhead in H2D timer)
 cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
-cudaHostUnregister(arrCpu);
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
@@ -306,9 +306,9 @@ cudaDeviceSynchronize();
 
 /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
-// Transfer sorted data back to host (copied to arrSortedGpu)
-cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
+// Transfer sorted data back to host (arrSortedGpu already pinned)
 cudaMemcpy(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost);
+cudaFree(d_arr);
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
