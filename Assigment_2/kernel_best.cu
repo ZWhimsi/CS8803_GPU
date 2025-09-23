@@ -50,47 +50,48 @@ __device__ KernelStats d_stats;
 #endif
 
 // GPU Kernel for bitonic sort with global memory
-__global__ void BitonicSort_global(int* data, int j, int k, int size){
-  int i = blockDim.x*blockIdx.x + threadIdx.x;
-  if (i >= size) return;
-  
-  int partnerGlobalIdx = i ^ j;
-  
-  if (i < partnerGlobalIdx && i < size && partnerGlobalIdx < size) {
-    bool ascending = (i & k) == 0; 
-    
-    // Coalesced memory access pattern
-    int val1 = data[i];
-    int val2 = data[partnerGlobalIdx];
+__launch_bounds__(1024, 2)
+__global__ void BitonicSort_global(int* __restrict__ data, int j, int k, int size){
+  const int threadId = blockDim.x * blockIdx.x + threadIdx.x;
+  const int stride = blockDim.x * gridDim.x;
 
-    // Compare and swap if needed
-    #if ENABLE_DIAG
-    // Sampling only first DIAG_SAMPLE_BLOCKS blocks for diagnostics
-    if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
-      int partnerBlockIdx = partnerGlobalIdx / blockDim.x;
-      bool sameBlock = (partnerBlockIdx == blockIdx.x);
-      atomicAdd(&d_stats.compares, 1ULL);
-      if (sameBlock) {
-        atomicAdd(&d_stats.sameBlockPairs, 1ULL);
-      } else {
-        atomicAdd(&d_stats.crossBlockPairs, 1ULL);
-      }
-      unsigned int mask = __ballot_sync(0xffffffff, (val1 > val2) == ascending);
-      if ((threadIdx.x & 31) == 0) {
-        if (mask != 0u && mask != 0xffffffffu) {
-          atomicAdd(&d_stats.divergentWarps, 1ULL);
-        }
-      }
-    }
-    #endif
-    if ((val1 > val2) == ascending) {
-      data[i] = val2;
-      data[partnerGlobalIdx] = val1;
+  for (int i = threadId; i < size; i += stride) {
+    const int partnerGlobalIdx = i ^ j;
+
+    if (i < partnerGlobalIdx && partnerGlobalIdx < size) {
+      const bool ascending = (i & k) == 0;
+
+      int val1 = data[i];
+      int val2 = data[partnerGlobalIdx];
+
       #if ENABLE_DIAG
       if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
-        atomicAdd(&d_stats.swaps, 1ULL);
+        const int partnerBlockIdx = partnerGlobalIdx / blockDim.x;
+        const bool sameBlock = (partnerBlockIdx == blockIdx.x);
+        atomicAdd(&d_stats.compares, 1ULL);
+        if (sameBlock) {
+          atomicAdd(&d_stats.sameBlockPairs, 1ULL);
+        } else {
+          atomicAdd(&d_stats.crossBlockPairs, 1ULL);
+        }
+        unsigned int mask = __ballot_sync(0xffffffff, (val1 > val2) == ascending);
+        if ((threadIdx.x & 31) == 0) {
+          if (mask != 0u && mask != 0xffffffffu) {
+            atomicAdd(&d_stats.divergentWarps, 1ULL);
+          }
+        }
       }
       #endif
+
+      if ((val1 > val2) == ascending) {
+        data[i] = val2;
+        data[partnerGlobalIdx] = val1;
+        #if ENABLE_DIAG
+        if (blockIdx.x < DIAG_SAMPLE_BLOCKS) {
+          atomicAdd(&d_stats.swaps, 1ULL);
+        }
+        #endif
+      }
     }
   }
 }
@@ -164,6 +165,46 @@ __global__ void BitonicSort_shared(int* data, int j, int k, int size){
   __syncthreads();
   
   // Write back to global memory
+  if (i < size) {
+    data[i] = s_array[threadIdx.x];
+  }
+}
+
+// GPU Kernel that batches all intra-block (j < blockDim.x) phases for a given k
+__global__ void BitonicSort_shared_batched(int* __restrict__ data, int k, int size){
+  extern __shared__ DTYPE s_array[];
+
+  const int globalBase = blockIdx.x * blockDim.x;
+  const int i = globalBase + threadIdx.x;
+  const bool ascending_const = ((i & k) == 0);
+
+  // Load into shared, pad out-of-range with INT_MAX
+  if (i < size) {
+    s_array[threadIdx.x] = data[i];
+  } else {
+    s_array[threadIdx.x] = INT_MAX;
+  }
+  __syncthreads();
+
+  // Process all remaining j within the block for this k
+  #pragma unroll
+  for (int jj = min(k >> 1, blockDim.x >> 1); jj > 0; jj >>= 1) {
+    const int partnerLocalIdx = threadIdx.x ^ jj;
+
+    // Only one of each pair performs the compare-swap
+    if (threadIdx.x < partnerLocalIdx) {
+      int val1 = s_array[threadIdx.x];
+      int val2 = s_array[partnerLocalIdx];
+
+      if ((val1 > val2) == ascending_const) {
+        s_array[threadIdx.x] = val2;
+        s_array[partnerLocalIdx] = val1;
+      }
+    }
+    __syncthreads();
+  }
+
+  // Write back
   if (i < size) {
     data[i] = s_array[threadIdx.x];
   }
@@ -330,41 +371,36 @@ int main(int argc, char *argv[]) {
     cudaEventRecord(start);
     /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
-    // Perform bitonic sort on GPU using shared memory
-    LOG_STAGE("Starting shared memory bitonic sort on GPU");
-    // Optimal launch configuration for H100
-    int threadsPerBlock = 512;
-    int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
-    LOG_INFO("Launch configuration: %d blocks, %d threads per block", blocksPerGrid, threadsPerBlock);
+  // Perform bitonic sort on GPU (hybrid: global for j>=blockDim, batched shared for remaining j)
+  LOG_STAGE("Starting hybrid bitonic sort on GPU");
 
-    // Calculate shared memory size needed
-    size_t sharedMemSize = threadsPerBlock * sizeof(DTYPE);
-    LOG_DEBUG("Shared memory size: %zu bytes", sharedMemSize);
+  // H100: favor 1024 threads per block; ensure enough blocks to saturate SMs
+  int threadsPerBlock = 1024;
+  int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
+  int minBlocks = prop.multiProcessorCount * 16; // aim for high residency
+  if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
+  LOG_INFO("Launch configuration: %d blocks, %d threads per block", blocksPerGrid, threadsPerBlock);
 
-    // Use smart hybrid approach: shared memory for small arrays, global memory for large arrays
-    int step_count = 0;
-    if (size <= 512) {
-        // Small arrays: Use shared memory kernel (benefits from shared memory)
-        LOG_DEBUG("Using shared memory kernel for small array");
-        for (int k = 2; k <= size; k *= 2) {
-            for (int j = k/2; j > 0; j /= 2) {
-                BitonicSort_shared<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(d_arr, j, k, size);
-                step_count++;
-                LOG_DEBUG("Step %d: Using shared memory kernel (j=%d, k=%d)", step_count, j, k);
-            }
-        }
-        LOG_INFO("Shared memory bitonic sort completed in %d steps", step_count);
-    } else {
-        // Large arrays: Use global memory kernel
-        LOG_DEBUG("Using global memory kernel for large array");
-        for (int k = 2; k <= size; k *= 2) {
-            for (int j = k/2; j > 0; j /= 2) {
-                BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, size);
-                step_count++;
-            }
-        }
-        LOG_INFO("Global memory bitonic sort completed in %d steps", step_count);
+  size_t sharedMemSize = threadsPerBlock * sizeof(DTYPE);
+  LOG_DEBUG("Shared memory size: %zu bytes", sharedMemSize);
+
+  int step_count = 0;
+  for (int k = 2; k <= size; k <<= 1) {
+    int j = k >> 1;
+
+    // Global passes while partners may cross blocks
+    for (; j >= threadsPerBlock; j >>= 1) {
+      BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, size);
+      step_count++;
     }
+
+    // One batched shared-memory pass per k for all remaining j
+    if (j > 0) {
+      BitonicSort_shared_batched<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(d_arr, k, size);
+      step_count++;
+    }
+  }
+  LOG_INFO("Hybrid bitonic sort completed in %d steps", step_count);
 
     CUDA_CHECK(cudaDeviceSynchronize());
     LOG_DEBUG("Shared memory kernel completed");
