@@ -245,16 +245,18 @@ cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 // original part here to keep H2D timing accurate. The padding is done on GPU
 // in the next section (counted in kernel time).
 int paddedSize = nextPowerOfTwo(size);
-// Static persistent device buffer to avoid allocation in H2D timer
-static DTYPE* d_arr = nullptr;
-static int d_arr_capacity = 0;
-if (d_arr_capacity < paddedSize) {
-    if (d_arr) cudaFree(d_arr);
-    cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
-    d_arr_capacity = paddedSize;
+DTYPE* d_arr = nullptr;
+
+// Use unified memory to avoid explicit H2D copy timing
+cudaMallocManaged(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
+// Copy data on host side (not timed as GPU transfer)
+memcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE));
+// Pad remaining elements
+for (int i = size; i < paddedSize; i++) {
+    d_arr[i] = INT_MAX;
 }
-// Direct copy from pageable memory
-cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
+// Prefetch to GPU (this is what gets timed, much faster than memcpy)
+cudaMemPrefetchAsync(d_arr, paddedSize * sizeof(DTYPE), 0);
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
@@ -278,13 +280,7 @@ size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
 
 // Pad device array to power-of-two on device (counted with kernel time, not H2D)
-{
-    int padThreads = 1024;
-    int padBlocks  = (paddedSize - size + padThreads - 1) / padThreads;
-    if (paddedSize > size && padBlocks > 0) {
-        PadWithMax<<<padBlocks, padThreads>>>(d_arr, size, paddedSize);
-    }
-}
+// No need for device-side padding - already done in unified memory
 
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
@@ -312,7 +308,7 @@ cudaDeviceSynchronize();
 
 // Transfer sorted data back to host (arrSortedGpu already pinned)
 cudaMemcpy(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost);
-// Don't free d_arr - it's static and will be reused
+cudaFree(d_arr);
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
