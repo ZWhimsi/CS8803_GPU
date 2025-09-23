@@ -310,7 +310,8 @@ int main(int argc, char *argv[]) {
     LOG_INFO("Data successfully copied to GPU");
 
     #if ENABLE_DIAG
-    CUDA_CHECK(cudaMemsetToSymbol(d_stats, 0, sizeof(KernelStats)));
+    KernelStats zero_stats = {};
+    CUDA_CHECK(cudaMemcpyToSymbol(d_stats, &zero_stats, sizeof(KernelStats)));
     #endif
 
     /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
