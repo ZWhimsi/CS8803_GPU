@@ -245,18 +245,12 @@ DTYPE *arrSortedGpu = nullptr;
 // in the next section (counted in kernel time).
 int paddedSize = nextPowerOfTwo(size);
 DTYPE* d_arr = nullptr;
-
-// Build a pinned, padded host buffer and copy once (counts in H2D timer only for the memcpy)
-DTYPE* h_pinned_padded = nullptr;
-cudaMallocHost(&h_pinned_padded, (size_t)paddedSize * sizeof(DTYPE));
-// Copy original data
-memcpy(h_pinned_padded, arrCpu, (size_t)size * sizeof(DTYPE));
-// Pad tail with INT_MAX
-for (int i = size; i < paddedSize; ++i) h_pinned_padded[i] = INT_MAX;
-
+// Allocate device buffer for padded size
 cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
-cudaMemcpy(d_arr, h_pinned_padded, (size_t)paddedSize * sizeof(DTYPE), cudaMemcpyHostToDevice);
-cudaFreeHost(h_pinned_padded);
+// Register pageable host buffer to speed up H2D copy of N elements only
+cudaHostRegister(arrCpu, (size_t)size * sizeof(DTYPE), cudaHostRegisterDefault);
+cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
+cudaHostUnregister(arrCpu);
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
@@ -279,7 +273,14 @@ if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
 
-// No device-side padding needed (already padded on host)
+// Pad device array to power-of-two on device (counted with kernel time, not H2D)
+{
+    int padThreads = 1024;
+    int padBlocks  = (paddedSize - size + padThreads - 1) / padThreads;
+    if (paddedSize > size && padBlocks > 0) {
+        PadWithMax<<<padBlocks, padThreads>>>(d_arr, size, paddedSize);
+    }
+}
 
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
