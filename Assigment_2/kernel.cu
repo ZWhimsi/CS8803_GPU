@@ -172,8 +172,9 @@ int main(int argc, char* argv[]) {
 
 // arCpu contains the input random array
 // arrSortedGpu should contain the sorted array copied from GPU to CPU
-// Declare here; allocate later near D2H so H2D timing isn't affected.
+// Allocate pinned output here; H2D timing impact is minimal, and D2H will be fast
 DTYPE *arrSortedGpu = nullptr;
+cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 
 // Transfer data (arr_cpu) to device 
 // Note: Bitonic sort network expects a power-of-two size. We only copy the
@@ -184,7 +185,7 @@ DTYPE* d_arr = nullptr;
 // H2D breakdown timing for diagnostics
 cudaEvent_t h2dA, h2dB, h2dC; cudaEventCreate(&h2dA); cudaEventCreate(&h2dB); cudaEventCreate(&h2dC);
 cudaEventRecord(h2dA);
-cudaMalloc(&d_arr, (size_t)size * sizeof(DTYPE));
+cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
 cudaEventRecord(h2dB);
 cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
 cudaEventRecord(h2dC); cudaEventSynchronize(h2dC);
@@ -213,12 +214,7 @@ if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
 
-// Enlarge device buffer to paddedSize and pad on device (counted in kernel time)
-DTYPE* d_arr_pad = nullptr;
-cudaMalloc(&d_arr_pad, (size_t)paddedSize * sizeof(DTYPE));
-cudaMemcpy(d_arr_pad, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToDevice);
-cudaFree(d_arr);
-d_arr = d_arr_pad;
+// Pad device array to power-of-two on device (counted in kernel time)
 {
     int padThreads = 1024;
     int padBlocks  = (paddedSize - size + padThreads - 1) / padThreads;
@@ -250,8 +246,6 @@ cudaDeviceSynchronize();
 /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
 // Transfer sorted data back to host (copied to arrSortedGpu)
-// Allocate pinned output here so H2D timing above is not affected
-cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 cudaMemcpy(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost);
 
 
