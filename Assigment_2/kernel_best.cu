@@ -269,6 +269,62 @@ __global__ void BitonicSort_shared_batched_2x(int* __restrict__ data, int k, int
   if (g1 < size) data[g1] = s_array[tid + blockDim.x];
 }
 
+// GPU Kernel that batches j phases for a 4x tile (handles j < 4*blockDim.x)
+__global__ void BitonicSort_shared_batched_4x(int* __restrict__ data, int k, int size){
+  extern __shared__ DTYPE s_array[]; // size: 4 * blockDim.x
+
+  const int bd = blockDim.x;
+  const int base = (blockIdx.x * bd) << 2; // 4 * blockDim per block
+  const int tid  = threadIdx.x;
+
+  const int g0 = base + tid;
+  const int g1 = g0 + bd;
+  const int g2 = g1 + bd;
+  const int g3 = g2 + bd;
+
+  // Load four elements into shared memory
+  s_array[tid]          = (g0 < size) ? data[g0] : INT_MAX;
+  s_array[tid + bd]     = (g1 < size) ? data[g1] : INT_MAX;
+  s_array[tid + 2 * bd] = (g2 < size) ? data[g2] : INT_MAX;
+  s_array[tid + 3 * bd] = (g3 < size) ? data[g3] : INT_MAX;
+  __syncthreads();
+
+  for (int jj = min(k >> 1, 2 * bd); jj > 0; jj >>= 1) {
+    // Process all four logical indices in the 4*bd tile
+    #define PROCESS_LID(LID_EXPR) \
+      { \
+        const int lid = (LID_EXPR); \
+        const int partner = lid ^ jj; \
+        if (lid < partner) { \
+          const int gi = base + lid; \
+          const bool ascending = ((gi & k) == 0); \
+          int a = s_array[lid]; \
+          int b = s_array[partner]; \
+          if ((a > b) == ascending) { \
+            s_array[lid] = b; \
+            s_array[partner] = a; \
+          } \
+        } \
+      }
+
+    PROCESS_LID(tid);
+    __syncthreads();
+    PROCESS_LID(tid + bd);
+    __syncthreads();
+    PROCESS_LID(tid + 2 * bd);
+    __syncthreads();
+    PROCESS_LID(tid + 3 * bd);
+    __syncthreads();
+    #undef PROCESS_LID
+  }
+
+  // Store back
+  if (g0 < size) data[g0] = s_array[tid];
+  if (g1 < size) data[g1] = s_array[tid + bd];
+  if (g2 < size) data[g2] = s_array[tid + 2 * bd];
+  if (g3 < size) data[g3] = s_array[tid + 3 * bd];
+}
+
 // Helper function to print array
 void printArray(int* arr, int size, const char* prefix = "") {
     printf("%s[", prefix);
@@ -436,29 +492,33 @@ int main(int argc, char *argv[]) {
   // H100: favor 1024 threads per block; ensure enough blocks to saturate SMs
   int threadsPerBlock = 1024;
   int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
-  int minBlocks = prop.multiProcessorCount * 16; // aim for high residency
+  int minBlocks = prop.multiProcessorCount * 32; // aim for higher residency on H100
   if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
   LOG_INFO("Launch configuration: %d blocks, %d threads per block", blocksPerGrid, threadsPerBlock);
 
-  size_t sharedMemSize = threadsPerBlock * sizeof(DTYPE);
+  size_t sharedMemSize   = threadsPerBlock * sizeof(DTYPE);
   size_t sharedMemSize2x = 2 * threadsPerBlock * sizeof(DTYPE);
-  LOG_DEBUG("Shared memory size: %zu bytes | 2x tile: %zu bytes", sharedMemSize, sharedMemSize2x);
+  size_t sharedMemSize4x = 4 * threadsPerBlock * sizeof(DTYPE);
+  LOG_DEBUG("Shared memory size: %zu | 2x: %zu | 4x: %zu bytes", sharedMemSize, sharedMemSize2x, sharedMemSize4x);
 
   int step_count = 0;
   for (int k = 2; k <= size; k <<= 1) {
     int j = k >> 1;
 
-    // Global passes while partners cross 2x tiles
-    for (; j >= (threadsPerBlock << 1); j >>= 1) {
+    // Global passes while partners cross 4x tiles
+    for (; j >= (threadsPerBlock << 2); j >>= 1) {
       BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, size);
       step_count++;
     }
 
-    // One batched shared-memory 2x-tile pass per k for remaining j
+    // One batched shared-memory 4x-tile pass per k for remaining j
     if (j > 0) {
-      // Use half as many blocks since each block covers 2*blockDim
-      int blocks2x = (blocksPerGrid + 1) >> 1;
-      BitonicSort_shared_batched_2x<<<blocks2x, threadsPerBlock, sharedMemSize2x>>>(d_arr, k, size);
+      // Compute blocks from problem size and tile size to cover domain
+      int blocks4x = (size + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
+      if (blocks4x < prop.multiProcessorCount * 8) blocks4x = prop.multiProcessorCount * 8; // keep SMs busy
+      // Prefer shared memory for batched kernels
+      cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
+      BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMemSize4x>>>(d_arr, k, size);
       step_count++;
     }
   }
