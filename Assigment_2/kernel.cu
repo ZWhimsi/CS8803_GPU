@@ -349,7 +349,6 @@ for (int k = 2; k <= paddedSize; k <<= 1) {
     }
 }
 // Start D2H asynchronously now; we'll time only the sync in D2H window
-cudaHostRegister(arrCpu, (size_t)size * sizeof(DTYPE), cudaHostRegisterDefault); // no-op for output; kept for symmetry
 DTYPE* arrPinnedOut = nullptr;
 cudaMallocHost(&arrPinnedOut, (size_t)size * sizeof(DTYPE));
 cudaMemcpyAsync(arrPinnedOut, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost, stream2);
@@ -358,7 +357,7 @@ cudaMemcpyAsync(arrPinnedOut, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDev
 cudaStreamSynchronize(stream1);
 
 // Swap output pointer; final sync/timing for D2H will be below
-arrSortedGpu = arrPinnedOut
+arrSortedGpu = arrPinnedOut;
 
 // D2H will be performed in the D2H-timed region to keep kernel time clean
 
