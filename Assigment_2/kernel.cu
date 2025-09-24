@@ -262,7 +262,8 @@ int main(int argc, char* argv[]) {
 DTYPE *arrSortedGpu = nullptr;
 cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 
-// Unified memory path: no need to page-lock host input
+// Page-lock input buffer for peak H2D bandwidth
+cudaHostRegister(arrCpu, (size_t)size * sizeof(DTYPE), cudaHostRegisterDefault);
 
 // Streams will be created after the H2D timing region to avoid inflating H2D time
 
@@ -303,8 +304,11 @@ cudaStreamCreate(&stream2);
 if (d_arr == nullptr) {
     cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
 }
-// H2D copy original data
-cudaMemcpyAsync(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice, stream1);
+// Split H2D copy across two async operations to better saturate PCIe
+size_t bytes = (size_t)size * sizeof(DTYPE);
+size_t half  = bytes / 2;
+cudaMemcpyAsync(d_arr, arrCpu, half, cudaMemcpyHostToDevice, stream1);
+cudaMemcpyAsync((char*)d_arr + half, (char*)arrCpu + half, bytes - half, cudaMemcpyHostToDevice, stream2);
 // Device-side padding to power-of-two
 if (size < paddedSize) {
     int padThreads = 256;
@@ -313,6 +317,7 @@ if (size < paddedSize) {
 }
 // Wait for transfer+padding before compute
 cudaStreamSynchronize(stream1);
+cudaStreamSynchronize(stream2);
 
 // Perform bitonic sort on GPU
 // Strategy: run global-memory phases while partners cross 4*blockDim tiles.
@@ -324,7 +329,9 @@ int minBlocks = prop.multiProcessorCount * 32;
 if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
+size_t sharedMem8x = (size_t)threadsPerBlock * 8 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
+cudaFuncSetCacheConfig(BitonicSort_shared_batched_8x, cudaFuncCachePreferShared);
 
 /* H100 KERNEL EXECUTION OPTIMIZATION:
  * Execute all sorting kernels in stream1 for proper dependency management
@@ -337,11 +344,11 @@ for (int k = 2; k <= paddedSize; k <<= 1) {
     for (; j >= (threadsPerBlock << 2); j >>= 1) {
         BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
     }
-    // One batched shared-memory 4x-tile pass per k for remaining j
+    // One batched shared-memory 8x-tile pass per k for remaining j
     if (j > 0) {
-        int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
-        if (blocks4x < prop.multiProcessorCount * 8) blocks4x = prop.multiProcessorCount * 8;
-        BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x, stream1>>>(d_arr, k, paddedSize);
+        int blocks8x = (paddedSize + (threadsPerBlock << 3) - 1) / (threadsPerBlock << 3);
+        if (blocks8x < prop.multiProcessorCount * 8) blocks8x = prop.multiProcessorCount * 8;
+        BitonicSort_shared_batched_8x<<<blocks8x, threadsPerBlock, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
     }
 }
 // Synchronize stream1 to ensure sorting completes before D2H transfer
@@ -364,6 +371,8 @@ cudaStreamSynchronize(stream2);
 cudaFree(d_arr);
 cudaStreamDestroy(stream1);
 cudaStreamDestroy(stream2);
+// Unregister page-locked input
+cudaHostUnregister(arrCpu);
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
