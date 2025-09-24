@@ -142,7 +142,6 @@ __global__ void BitonicSort_shared_batched_4x(DTYPE* __restrict__ data, int k, i
 
 // Batched shared-memory phase processing an 8x block tile.
 // It executes all remaining j < 8*blockDim.x steps for a given k.
-__launch_bounds__(1024, 2)
 __global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, int size) {
     extern __shared__ DTYPE s[]; // size: 8 * blockDim.x
     const int bd = blockDim.x;
@@ -170,7 +169,6 @@ __global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, i
     __syncthreads();
 
     // Process jj for this k within the 8x tile.
-    #pragma unroll
     for (int jj = min(k >> 1, 4 * bd); jj > 0; jj >>= 1) {
         // Repeat for 8 logical lanes separated by bd
         #define PROCESS_LID(LID_EXPR) \
@@ -340,7 +338,7 @@ cudaFuncSetCacheConfig(BitonicSort_shared_batched_8x, cudaFuncCachePreferShared)
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
     // Global phases while partners cross 4*blockDim tiles
-    for (; j >= (threadsPerBlock << 3); j >>= 1) {
+    for (; j >= (threadsPerBlock << 2); j >>= 1) {
         BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
     }
     // One batched shared-memory 8x-tile pass per k for remaining j
