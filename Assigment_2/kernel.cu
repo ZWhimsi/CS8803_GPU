@@ -372,12 +372,12 @@ arrSortedGpu = arrPinnedOut;
 
 // Keep device buffer alive until D2H region completes
 cudaStreamDestroy(stream1);
-cudaStreamDestroy(stream2);
 
-// Perform D2H copy within D2H-timed region
-cudaMallocHost(&arrSortedGpu, (size_t)size * sizeof(DTYPE));
-cudaMemcpy(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost);
-// Free device buffer after copy
+// Wait for the earlier async D2H to complete (timed)
+cudaStreamSynchronize(stream2);
+
+// Cleanup
+cudaStreamDestroy(stream2);
 cudaFree(d_arr);
 
 
