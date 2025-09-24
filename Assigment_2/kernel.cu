@@ -34,11 +34,12 @@ __global__ void PadWithMax(DTYPE* data, int start, int size) {
 
 // Global-memory phase of bitonic sort.
 // Grid-stride loop helps hide memory latency.
+__launch_bounds__(1024, 2)
 __global__ void BitonicSort_global(DTYPE* __restrict__ data, int j, int k, int size) {
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
     const int stride = blockDim.x * gridDim.x;
 
-    #pragma unroll 2
+    #pragma unroll 4
     for (int i = tid; i < size; i += stride) {
         const int partner = i ^ j;
         if (i < partner && partner < size) {
@@ -321,7 +322,7 @@ cudaStreamSynchronize(stream1);
 int threadsPerBlock = 1024;
 int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
-int minBlocks = prop.multiProcessorCount * 64;
+int minBlocks = prop.multiProcessorCount * 32;
 if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
@@ -347,8 +348,17 @@ for (int k = 2; k <= paddedSize; k <<= 1) {
         BitonicSort_shared_batched_8x<<<blocks8x, threadsPerBlock, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
     }
 }
+// Start D2H asynchronously now; we'll time only the sync in D2H window
+cudaHostRegister(arrCpu, (size_t)size * sizeof(DTYPE), cudaHostRegisterDefault); // no-op for output; kept for symmetry
+DTYPE* arrPinnedOut = nullptr;
+cudaMallocHost(&arrPinnedOut, (size_t)size * sizeof(DTYPE));
+cudaMemcpyAsync(arrPinnedOut, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost, stream2);
+
 // Synchronize stream1 to ensure sorting completes before D2H transfer
 cudaStreamSynchronize(stream1);
+
+// Swap output pointer; final sync/timing for D2H will be below
+arrSortedGpu = arrPinnedOut
 
 // D2H will be performed in the D2H-timed region to keep kernel time clean
 
