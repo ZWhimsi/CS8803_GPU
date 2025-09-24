@@ -259,13 +259,11 @@ int main(int argc, char* argv[]) {
 // 4. Critical for achieving H100's peak 128 GB/s PCIe Gen5 bandwidth
 // 5. Without pinning: transfers go through staged copies, adding 30-50% overhead
 // 6. H100's enhanced copy engines can only reach full efficiency with pinned memory
-DTYPE *arrPinnedInput = nullptr;
 DTYPE *arrSortedGpu = nullptr;
-cudaMallocHost(&arrPinnedInput, size * sizeof(DTYPE));
 cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
 
-// Copy input data to pinned memory (one-time CPU overhead)
-memcpy(arrPinnedInput, arrCpu, size * sizeof(DTYPE));
+// Page-lock the existing host input buffer to eliminate extra memcpy
+cudaHostRegister(arrCpu, (size_t)size * sizeof(DTYPE), cudaHostRegisterDefault);
 
 // Create CUDA streams for overlapping transfers and computation
 // H100's enhanced copy engines can handle multiple concurrent operations
@@ -292,9 +290,8 @@ int paddedSize = nextPowerOfTwo(size);
 DTYPE* d_arr = nullptr;
 cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
 
-// Asynchronous H2D transfer using stream1
-// This leverages H100's copy engine while CPU continues execution
-cudaMemcpyAsync(d_arr, arrPinnedInput, size * sizeof(DTYPE), cudaMemcpyHostToDevice, stream1);
+// Asynchronous H2D transfer using stream1 directly from page-locked arrCpu
+cudaMemcpyAsync(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice, stream1);
 
 // While data is transferring, we can prepare padding kernel launch
 // Padding will be done on GPU after transfer completes (in kernel time section)
@@ -374,7 +371,8 @@ cudaStreamSynchronize(stream2);
 cudaFree(d_arr);
 cudaStreamDestroy(stream1);
 cudaStreamDestroy(stream2);
-cudaFreeHost(arrPinnedInput);
+// Unregister page-locked input
+cudaHostUnregister(arrCpu);
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
