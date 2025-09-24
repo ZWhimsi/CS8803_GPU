@@ -365,6 +365,12 @@ cudaStreamSynchronize(stream1);
 cudaStreamDestroy(stream1);
 cudaStreamDestroy(stream2);
 
+// Perform D2H copy within D2H-timed region
+cudaMallocHost(&arrSortedGpu, (size_t)size * sizeof(DTYPE));
+cudaMemcpy(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost);
+// Free device buffer after copy
+cudaFree(d_arr);
+
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
