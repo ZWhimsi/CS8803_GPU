@@ -350,10 +350,7 @@ for (int k = 2; k <= paddedSize; k <<= 1) {
 // Synchronize stream1 to ensure sorting completes before D2H transfer
 cudaStreamSynchronize(stream1);
 
-// Allocate pinned output and perform D2H here (kernel-time region)
-cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
-cudaMemcpyAsync(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost, stream2);
-cudaStreamSynchronize(stream2);
+// D2H will be performed in the D2H-timed region to keep kernel time clean
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
@@ -364,8 +361,7 @@ cudaStreamSynchronize(stream2);
 
 /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
-// Clean up resources
-cudaFree(d_arr);
+// Keep device buffer alive until D2H region completes
 cudaStreamDestroy(stream1);
 cudaStreamDestroy(stream2);
 
