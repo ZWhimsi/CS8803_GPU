@@ -35,7 +35,7 @@ __global__ void PadWithMax(DTYPE* data, int start, int size) {
 // Global-memory phase of bitonic sort.
 // Grid-stride loop helps hide memory latency.
 __launch_bounds__(1024, 2)
-__launch_bounds__(512, 2)
+__launch_bounds__(1024, 2)
 __global__ void BitonicSort_global(DTYPE* __restrict__ data, int j, int k, int size) {
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
     const int stride = blockDim.x * gridDim.x;
@@ -320,7 +320,7 @@ cudaStreamSynchronize(stream1);
 // Perform bitonic sort on GPU
 // Strategy: run global-memory phases while partners cross 4*blockDim tiles.
 // Then run one batched shared-memory pass that completes remaining phases.
-int threadsPerBlock = 512;
+int threadsPerBlock = 1024;
 int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 int minBlocks = prop.multiProcessorCount * 32;
@@ -342,11 +342,11 @@ for (int k = 2; k <= paddedSize; k <<= 1) {
     for (; j >= (threadsPerBlock << 2); j >>= 1) {
         BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
     }
-    // One batched shared-memory 8x-tile pass per k for remaining j
+    // One batched shared-memory 4x-tile pass per k for remaining j
     if (j > 0) {
-        int blocks8x = (paddedSize + (threadsPerBlock << 3) - 1) / (threadsPerBlock << 3);
-        if (blocks8x < prop.multiProcessorCount * 8) blocks8x = prop.multiProcessorCount * 8;
-        BitonicSort_shared_batched_8x<<<blocks8x, threadsPerBlock, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
+        int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
+        if (blocks4x < prop.multiProcessorCount * 8) blocks4x = prop.multiProcessorCount * 8;
+        BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x, stream1>>>(d_arr, k, paddedSize);
     }
 }
 // Start D2H asynchronously now; we'll time only the sync in D2H window
