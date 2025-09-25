@@ -78,61 +78,109 @@ __global__ void BitonicSort_shared_batched_4x(DTYPE* __restrict__ data, int k, i
 
     // Process all remaining jj for this k within the 4x tile.
     for (int jj = min(k >> 1, 2 * bd); jj > 0; jj >>= 1) {
-        // Logical lane 0..bd-1
-        {
-            const int lid = t;
-            const int partner = lid ^ jj;
-            if (lid < partner) {
-                const int gi = base + lid;
-                const bool ascending = ((gi & k) == 0);
-                DTYPE a = s[lid];
-                DTYPE b = s[partner];
-                if ((a > b) == ascending) { s[lid] = b; s[partner] = a; }
+        if (jj >= 32) {
+            // Fallback shared-memory path for wide partner distances (may cross warps)
+            {
+                const int lid = t;
+                const int partner = lid ^ jj;
+                if (lid < partner) {
+                    const int gi = base + lid;
+                    const bool ascending = ((gi & k) == 0);
+                    DTYPE a = s[lid];
+                    DTYPE b = s[partner];
+                    if ((a > b) == ascending) { s[lid] = b; s[partner] = a; }
+                }
             }
-        }
-        __syncthreads();
-
-        // Logical lane bd..2*bd-1
-        {
-            const int lid = t + bd;
-            const int partner = lid ^ jj;
-            if (lid < partner) {
-                const int gi = base + lid;
-                const bool ascending = ((gi & k) == 0);
-                DTYPE a = s[lid];
-                DTYPE b = s[partner];
-                if ((a > b) == ascending) { s[lid] = b; s[partner] = a; }
+            __syncthreads();
+            {
+                const int lid = t + bd;
+                const int partner = lid ^ jj;
+                if (lid < partner) {
+                    const int gi = base + lid;
+                    const bool ascending = ((gi & k) == 0);
+                    DTYPE a = s[lid];
+                    DTYPE b = s[partner];
+                    if ((a > b) == ascending) { s[lid] = b; s[partner] = a; }
+                }
             }
-        }
-        __syncthreads();
-
-        // Logical lane 2*bd..3*bd-1
-        {
-            const int lid = t + 2 * bd;
-            const int partner = lid ^ jj;
-            if (lid < partner) {
-                const int gi = base + lid;
-                const bool ascending = ((gi & k) == 0);
-                DTYPE a = s[lid];
-                DTYPE b = s[partner];
-                if ((a > b) == ascending) { s[lid] = b; s[partner] = a; }
+            __syncthreads();
+            {
+                const int lid = t + 2 * bd;
+                const int partner = lid ^ jj;
+                if (lid < partner) {
+                    const int gi = base + lid;
+                    const bool ascending = ((gi & k) == 0);
+                    DTYPE a = s[lid];
+                    DTYPE b = s[partner];
+                    if ((a > b) == ascending) { s[lid] = b; s[partner] = a; }
+                }
             }
-        }
-        __syncthreads();
-
-        // Logical lane 3*bd..4*bd-1
-        {
-            const int lid = t + 3 * bd;
-            const int partner = lid ^ jj;
-            if (lid < partner) {
-                const int gi = base + lid;
-                const bool ascending = ((gi & k) == 0);
-                DTYPE a = s[lid];
-                DTYPE b = s[partner];
-                if ((a > b) == ascending) { s[lid] = b; s[partner] = a; }
+            __syncthreads();
+            {
+                const int lid = t + 3 * bd;
+                const int partner = lid ^ jj;
+                if (lid < partner) {
+                    const int gi = base + lid;
+                    const bool ascending = ((gi & k) == 0);
+                    DTYPE a = s[lid];
+                    DTYPE b = s[partner];
+                    if ((a > b) == ascending) { s[lid] = b; s[partner] = a; }
+                }
             }
+            __syncthreads();
+        } else {
+            // Warp-level path for close partners: use shuffle, avoid shared traffic/barriers
+            unsigned mask = 0xffffffffu;
+            // Segment 0
+            {
+                int lid_local = t;
+                int gi = base + lid_local;
+                bool ascending = ((gi & k) == 0);
+                int val = s[lid_local];
+                int partner_val = __shfl_xor_sync(mask, val, jj);
+                bool lower = ((threadIdx.x & jj) == 0);
+                int lo = ascending ? min(val, partner_val) : max(val, partner_val);
+                int hi = ascending ? max(val, partner_val) : min(val, partner_val);
+                s[lid_local] = lower ? lo : hi;
+            }
+            // Segment 1
+            {
+                int lid_local = t + bd;
+                int gi = base + lid_local;
+                bool ascending = ((gi & k) == 0);
+                int val = s[lid_local];
+                int partner_val = __shfl_xor_sync(mask, val, jj);
+                bool lower = ((threadIdx.x & jj) == 0);
+                int lo = ascending ? min(val, partner_val) : max(val, partner_val);
+                int hi = ascending ? max(val, partner_val) : min(val, partner_val);
+                s[lid_local] = lower ? lo : hi;
+            }
+            // Segment 2
+            {
+                int lid_local = t + 2 * bd;
+                int gi = base + lid_local;
+                bool ascending = ((gi & k) == 0);
+                int val = s[lid_local];
+                int partner_val = __shfl_xor_sync(mask, val, jj);
+                bool lower = ((threadIdx.x & jj) == 0);
+                int lo = ascending ? min(val, partner_val) : max(val, partner_val);
+                int hi = ascending ? max(val, partner_val) : min(val, partner_val);
+                s[lid_local] = lower ? lo : hi;
+            }
+            // Segment 3
+            {
+                int lid_local = t + 3 * bd;
+                int gi = base + lid_local;
+                bool ascending = ((gi & k) == 0);
+                int val = s[lid_local];
+                int partner_val = __shfl_xor_sync(mask, val, jj);
+                bool lower = ((threadIdx.x & jj) == 0);
+                int lo = ascending ? min(val, partner_val) : max(val, partner_val);
+                int hi = ascending ? max(val, partner_val) : min(val, partner_val);
+                s[lid_local] = lower ? lo : hi;
+            }
+            __syncthreads();
         }
-        __syncthreads();
     }
 
     // Store back the 4 values.
