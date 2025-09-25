@@ -426,22 +426,26 @@ size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
 cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
 
-// High block count for better latency hiding
-int blocksPerGrid = prop.multiProcessorCount * 48;
+// Use 8x batching for better efficiency
+size_t sharedMem8x = (size_t)threadsPerBlock * 8 * sizeof(DTYPE);
+cudaFuncSetCacheConfig(BitonicSort_shared_batched_8x, cudaFuncCachePreferShared);
+
+// Very high block count for maximum latency hiding
+int blocksPerGrid = prop.multiProcessorCount * 64;
 
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
     
-    // Global phases while partners cross 4*blockDim tiles
-    for (; j >= (threadsPerBlock << 2); j >>= 1) {
+    // Global phases while partners cross 8*blockDim tiles for 8x batching
+    for (; j >= (threadsPerBlock << 3); j >>= 1) {
         BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
     }
     
-    // Shared memory phase for remaining j values
+    // Use 8x batched shared memory kernel for better efficiency
     if (j > 0) {
-        int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
-        blocks4x = max(blocks4x, prop.multiProcessorCount * 16);
-        BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x, stream1>>>(d_arr, k, paddedSize);
+        int blocks8x = (paddedSize + (threadsPerBlock << 3) - 1) / (threadsPerBlock << 3);
+        blocks8x = max(blocks8x, prop.multiProcessorCount * 8);
+        BitonicSort_shared_batched_8x<<<blocks8x, threadsPerBlock, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
     }
 }
 // Start D2H asynchronously now; we'll time only the sync in D2H window
