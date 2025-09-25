@@ -11,25 +11,23 @@
 #include <limits.h>
 
 // Return true if n is a power of two (n > 0)
-static inline bool isPowerOfTwo(int n) {
+static inline bool Pow_two_checker(int n) {
     return n > 0 && (n & (n - 1)) == 0;
 }
 
 // Return the next power of two >= n
-static inline int nextPowerOfTwo(int n) {
-    if (isPowerOfTwo(n)) return n;
+static inline int next_pow(int n) {
+    if (Pow_two_checker(n)) return n;
     int p = 1;
     while (p < n) p <<= 1;
     return p;
 }
-// Note for future-me: this padding kernel is intentionally boring.
-// We only care about making sure the bitonic network doesn't trip
-// on non-power-of-two sizes. Keep it obvious.
-__global__ void PadWithMax(DTYPE* data, int startIndex, int totalSize) {
-    const int globalThreadId = blockIdx.x * blockDim.x + threadIdx.x;
-    const int gridStride = blockDim.x * gridDim.x;
-    for (int dataIndex = startIndex + globalThreadId; dataIndex < totalSize; dataIndex += gridStride) {
-        data[dataIndex] = INT_MAX;
+// We only care about making sure the bitonic network doesn't trip on non-power-of-two sizes.
+__global__ void PadWithMax(DTYPE* data, int start_ind, int size) {
+    const int glob_ind = blockIdx.x * blockDim.x + threadIdx.x;
+    const int grid_stride = blockDim.x * gridDim.x;
+    for (int data_ind = start_ind + glob_ind; data_ind < size; data_ind += grid_stride) {
+        data[data_ind] = INT_MAX;
     }
 }
 
@@ -42,23 +40,22 @@ __device__ __forceinline__ void swapIf(bool doSwap, DTYPE &a, DTYPE &b) {
 }
 
 // This is the straightforward global-memory phase.
-// Why not do everything in shared? Because partners can be far apart,
-// and letting the fabric move the data is fine here.
-__global__ void BitonicSort_global(DTYPE* __restrict__ data, int partnerMask, int stageMask, int totalSize) {
-    const int globalThreadIndex = blockDim.x * blockIdx.x + threadIdx.x;
-    const int gridStride = blockDim.x * gridDim.x;
+// Why not do everything in shared? Because partners can be far apart, and letting the fabric move the data is fine here.
+__global__ void BitonicSort_global(DTYPE* __restrict__ data, int partnerMask, int stageMask, int size) {
+    const int glob_thread_ind = blockDim.x * blockIdx.x + threadIdx.x;
+    const int grid_stride = blockDim.x * gridDim.x;
 
     #pragma unroll 2
-    for (int elementIndex = globalThreadIndex; elementIndex < totalSize; elementIndex += gridStride) {
-        const int partnerIndex = elementIndex ^ partnerMask;
-        if (elementIndex < partnerIndex && partnerIndex < totalSize) {
-            const bool ascending = ((elementIndex & stageMask) == 0);
-            DTYPE a = data[elementIndex];
+    for (int elmnt_ind = glob_thread_ind; elmnt_ind < size; elmnt_ind += grid_stride) {
+        const int partnerIndex = elmnt_ind ^ partnerMask;
+        if (elmnt_ind < partnerIndex && partnerIndex < size) {
+            const bool ascending = ((elmnt_ind & stageMask) == 0);
+            DTYPE a = data[elmnt_ind];
             DTYPE b = data[partnerIndex];
             const bool shouldSwap = ((a > b) == ascending);
             swapIf(shouldSwap, a, b);
             if (shouldSwap) {
-                data[elementIndex] = a;
+                data[elmnt_ind] = a;
                 data[partnerIndex] = b;
             }
         }
@@ -150,7 +147,7 @@ __global__ void BitonicSort_shared_batched_4x(DTYPE* __restrict__ data, int k, i
     if (g3 < size) data[g3] = tile[t + 3*W];
 }
 
-// 8x variant kept for completeness; not used in the main loop path by default.
+// 8x variant kept but not used in the main loop path by default, not performing well
 __global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, int size) {
     extern __shared__ DTYPE s[]; // 8 * blockDim.x
     const int bd = blockDim.x;
@@ -241,13 +238,13 @@ int main(int argc, char* argv[]) {
 // arrSortedGpu should contain the sorted array copied from GPU to CPU
 DTYPE *arrSortedGpu = (DTYPE*)malloc(size * sizeof(DTYPE));
 
-int paddedSize = nextPowerOfTwo(size);
+int padded_size = next_pow(size);
 DTYPE* d_arr = nullptr;
 
-cudaMallocManaged(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
+cudaMallocManaged(&d_arr, (size_t)padded_size * sizeof(DTYPE));
 memcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE));
-for (int i = size; i < paddedSize; i++) { d_arr[i] = INT_MAX; }
-cudaMemPrefetchAsync(d_arr, paddedSize * sizeof(DTYPE), 0);
+for (int i = size; i < padded_size; i++) { d_arr[i] = INT_MAX; }
+cudaMemPrefetchAsync(d_arr, padded_size * sizeof(DTYPE), 0);
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
@@ -258,24 +255,24 @@ cudaMemPrefetchAsync(d_arr, paddedSize * sizeof(DTYPE), 0);
     
 /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
-int threadsPerBlock = 1024;
-int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
+int thread_per_block = 1024;
+int block_per_grid = (padded_size + thread_per_block - 1) / thread_per_block;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
-int minBlocks = prop.multiProcessorCount * 32;
-if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
+int min_num_block = prop.multiProcessorCount * 32;
+if (block_per_grid < min_num_block) block_per_grid = min_num_block;
 
-size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
+size_t sharedMem4x = (size_t)thread_per_block * 4 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
 
-for (int k = 2; k <= paddedSize; k <<= 1) {
+for (int k = 2; k <= padded_size; k <<= 1) {
     int j = k >> 1;
-    for (; j >= (threadsPerBlock << 2); j >>= 1) {
-        BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, paddedSize);
+    for (; j >= (thread_per_block << 2); j >>= 1) {
+        BitonicSort_global<<<block_per_grid, thread_per_block>>>(d_arr, j, k, padded_size);
     }
     if (j > 0) {
-        int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
+        int blocks4x = (padded_size + (thread_per_block << 2) - 1) / (thread_per_block << 2);
         if (blocks4x < prop.multiProcessorCount * 8) blocks4x = prop.multiProcessorCount * 8;
-        BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x>>>(d_arr, k, paddedSize);
+        BitonicSort_shared_batched_4x<<<blocks4x, thread_per_block, sharedMem4x>>>(d_arr, k, padded_size);
     }
 }
 cudaDeviceSynchronize();
