@@ -76,6 +76,7 @@ __global__ void BitonicSort_shared_batched_4x(DTYPE* __restrict__ data, int k, i
     __syncthreads();
 
     // Process all remaining jj for this k within the 4x tile.
+    #pragma unroll 8
     for (int jj = min(k >> 1, 2 * bd); jj > 0; jj >>= 1) {
         // Logical lane 0..bd-1
         {
