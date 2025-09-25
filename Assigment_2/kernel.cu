@@ -308,90 +308,6 @@ __global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, i
 
 
 
-// Process multiple j phases in one kernel to reduce launches
-__global__ void __launch_bounds__(128, 16) BitonicSort_multi_j(
-    DTYPE* __restrict__ data, 
-    int k,
-    int j_start,
-    int j_end,
-    int size) {
-    
-    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    const int stride = blockDim.x * gridDim.x;
-    
-    // Process multiple j values in single kernel
-    for (int j = j_start; j >= j_end; j >>= 1) {
-        // Vectorized path when possible
-        if (j >= 4 && (tid * 4) < size) {
-            for (int base_i = tid * 4; base_i < size; base_i += stride * 4) {
-                // Load 4 values
-                int4 indices = make_int4(base_i, base_i + 1, base_i + 2, base_i + 3);
-                if (indices.w < size) {
-                    int4 vals = *reinterpret_cast<const int4*>(&data[base_i]);
-                    bool modified = false;
-                    
-                    // Process each value
-                    if (indices.x < (indices.x ^ j) && (indices.x ^ j) < size) {
-                        bool asc = ((indices.x & k) == 0);
-                        int pval = data[indices.x ^ j];
-                        if ((vals.x > pval) == asc) {
-                            data[indices.x ^ j] = vals.x;
-                            vals.x = pval;
-                            modified = true;
-                        }
-                    }
-                    if (indices.y < (indices.y ^ j) && (indices.y ^ j) < size) {
-                        bool asc = ((indices.y & k) == 0);
-                        int pval = data[indices.y ^ j];
-                        if ((vals.y > pval) == asc) {
-                            data[indices.y ^ j] = vals.y;
-                            vals.y = pval;
-                            modified = true;
-                        }
-                    }
-                    if (indices.z < (indices.z ^ j) && (indices.z ^ j) < size) {
-                        bool asc = ((indices.z & k) == 0);
-                        int pval = data[indices.z ^ j];
-                        if ((vals.z > pval) == asc) {
-                            data[indices.z ^ j] = vals.z;
-                            vals.z = pval;
-                            modified = true;
-                        }
-                    }
-                    if (indices.w < (indices.w ^ j) && (indices.w ^ j) < size) {
-                        bool asc = ((indices.w & k) == 0);
-                        int pval = data[indices.w ^ j];
-                        if ((vals.w > pval) == asc) {
-                            data[indices.w ^ j] = vals.w;
-                            vals.w = pval;
-                            modified = true;
-                        }
-                    }
-                    
-                    if (modified) {
-                        *reinterpret_cast<int4*>(&data[base_i]) = vals;
-                    }
-                }
-            }
-        } else {
-            // Scalar path
-            for (int i = tid; i < size; i += stride) {
-                int partner = i ^ j;
-                if (i < partner && partner < size) {
-                    bool ascending = ((i & k) == 0);
-                    DTYPE a = data[i];
-                    DTYPE b = data[partner];
-                    if ((a > b) == ascending) {
-                        data[i] = b;
-                        data[partner] = a;
-                    }
-                }
-            }
-        }
-        // Grid-wide sync not possible with __syncthreads()
-        // Remove sync as it only works within a block
-    }
-}
 
 // Implement your GPU device kernel(s) here (e.g., the bitonic sort kernel).
 
@@ -496,46 +412,26 @@ cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 // Configure all kernels for maximum performance
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_8x, cudaFuncCachePreferShared);
 cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
-cudaFuncSetCacheConfig(BitonicSort_multi_j, cudaFuncCachePreferL1);
 
-// Use 16x batching for even fewer kernel launches
-size_t sharedMem16x = (size_t)1024 * 16 * sizeof(DTYPE);
+// Use 8x batching for efficiency
 size_t sharedMem8x = (size_t)1024 * 8 * sizeof(DTYPE);
 
-// Process with minimal kernel launches
-int superBlocks = min(65535, prop.multiProcessorCount * 1024);
+// Use extremely high block counts to hide latency
+int maxBlocks = min(65535, prop.multiProcessorCount * 256);
 
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
     
-    // Count how many j phases we need
-    int j_count = 0;
-    int temp_j = j;
-    while (temp_j >= 8192) {
-        j_count++;
-        temp_j >>= 1;
+    // Global phases while partners cross 8*blockDim tiles
+    for (; j >= 8192; j >>= 1) {
+        BitonicSort_global<<<maxBlocks, 1024, 0, stream1>>>(d_arr, j, k, paddedSize);
     }
     
-    // For many j phases, process 2 at a time to ensure correctness
-    if (j_count >= 2) {
-        // Process 2 j phases in one kernel
-        while (j >= 16384) {
-            int j_end = j >> 1;
-            BitonicSort_multi_j<<<superBlocks, 128, 0, stream1>>>(d_arr, k, j, j_end, paddedSize);
-            j = j_end >> 1;
-        }
-    }
-    
-    // Process remaining large j with vectorized global
-    while (j >= 8192) {
-        BitonicSort_global<<<superBlocks, 1024, 0, stream1>>>(d_arr, j, k, paddedSize);
-        j >>= 1;
-    }
-    
-    // Small j - use shared memory
+    // Shared memory phase for remaining j values
     if (j > 0) {
-        int sharedBlocks = max((paddedSize + 8192 - 1) / 8192, prop.multiProcessorCount * 64);
-        BitonicSort_shared_batched_8x<<<sharedBlocks, 1024, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
+        int blocks8x = (paddedSize + 8192 - 1) / 8192;
+        blocks8x = max(blocks8x, prop.multiProcessorCount * 32);
+        BitonicSort_shared_batched_8x<<<blocks8x, 1024, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
     }
 }
 // Allocate pinned output buffer
