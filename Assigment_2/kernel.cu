@@ -76,7 +76,6 @@ __global__ void BitonicSort_shared_batched_4x(DTYPE* __restrict__ data, int k, i
     __syncthreads();
 
     // Process all remaining jj for this k within the 4x tile.
-    #pragma unroll 8
     for (int jj = min(k >> 1, 2 * bd); jj > 0; jj >>= 1) {
         // Logical lane 0..bd-1
         {
@@ -340,8 +339,8 @@ cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
  */
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
-    // Global phases while partners cross 4*blockDim tiles
-    for (; j >= (threadsPerBlock << 2); j >>= 1) {
+    // Global phases while partners cross 2*blockDim tiles
+    for (; j >= (threadsPerBlock << 1); j >>= 1) {
         BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
     }
     // One batched shared-memory 4x-tile pass per k for remaining j
