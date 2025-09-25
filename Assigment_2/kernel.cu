@@ -388,7 +388,8 @@ __global__ void __launch_bounds__(128, 16) BitonicSort_multi_j(
                 }
             }
         }
-        __syncthreads(); // Ensure all threads complete this j
+        // Grid-wide sync not possible with __syncthreads()
+        // Remove sync as it only works within a block
     }
 }
 
@@ -515,19 +516,14 @@ for (int k = 2; k <= paddedSize; k <<= 1) {
         temp_j >>= 1;
     }
     
-    // For many j phases, use multi-j kernel to process multiple phases at once
-    if (j_count >= 8) {
-        // Process 8 j phases in one kernel
-        int j_end = j >> 7; // j / 128
-        if (j_end < 8192) j_end = 8192;
-        BitonicSort_multi_j<<<superBlocks, 128, 0, stream1>>>(d_arr, k, j, j_end, paddedSize);
-        j = j_end >> 1;
-    } else if (j_count >= 4) {
-        // Process 4 j phases in one kernel
-        int j_end = j >> 3; // j / 8
-        if (j_end < 8192) j_end = 8192;
-        BitonicSort_multi_j<<<superBlocks, 128, 0, stream1>>>(d_arr, k, j, j_end, paddedSize);
-        j = j_end >> 1;
+    // For many j phases, process 2 at a time to ensure correctness
+    if (j_count >= 2) {
+        // Process 2 j phases in one kernel
+        while (j >= 16384) {
+            int j_end = j >> 1;
+            BitonicSort_multi_j<<<superBlocks, 128, 0, stream1>>>(d_arr, k, j, j_end, paddedSize);
+            j = j_end >> 1;
+        }
     }
     
     // Process remaining large j with vectorized global
