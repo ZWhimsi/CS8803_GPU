@@ -9,7 +9,6 @@
 #define DTYPE int
 // Add any additional #include headers or helper macros needed
 #include <limits.h>
-#include <cub/cub.cuh>
 
 // Return true if n is a power of two (n > 0)
 static inline bool isPowerOfTwo(int n) {
@@ -329,7 +328,14 @@ __global__ void __launch_bounds__(1024, 1) BitonicSort_persistent(
             __threadfence();
             if (threadIdx.x == 0) {
                 // Use block-level atomics for better efficiency
-                int expected = gridDim.x * ((k >> (__builtin_ctz(start_k) + 1)) + 1);
+                // Count trailing zeros manually for device compatibility
+                int ctz = 0;
+                int temp = start_k;
+                while ((temp & 1) == 0 && ctz < 32) {
+                    temp >>= 1;
+                    ctz++;
+                }
+                int expected = gridDim.x * ((k >> (ctz + 1)) + 1);
                 volatile int* vol_counter = phase_counter;
                 while (*vol_counter < expected) {
                     // Small delay to reduce memory contention
