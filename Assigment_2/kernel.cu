@@ -237,8 +237,7 @@ int main(int argc, char* argv[]) {
 // arCpu contains the input random array
 // arrSortedGpu should contain the sorted array copied from GPU to CPU
 // Allocate pinned output buffer for faster D2H
-DTYPE *arrSortedGpu = nullptr;
-cudaMallocHost(&arrSortedGpu, size * sizeof(DTYPE));
+DTYPE *arrSortedGpu = (DTYPE*)malloc(size * sizeof(DTYPE));
 
 // Transfer data (arr_cpu) to device 
 // Note: Bitonic sort network expects a power-of-two size. We only copy the
