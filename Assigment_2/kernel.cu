@@ -9,6 +9,7 @@
 #define DTYPE int
 // Add any additional #include headers or helper macros needed
 #include <limits.h>
+#include <cub/cub.cuh>
 
 // Return true if n is a power of two (n > 0)
 static inline bool isPowerOfTwo(int n) {
@@ -32,23 +33,72 @@ __global__ void PadWithMax(DTYPE* data, int start, int size) {
     }
 }
 
-// Global-memory phase of bitonic sort.
-// Grid-stride loop helps hide memory latency.
+// Global-memory phase of bitonic sort with vectorized memory access
 __launch_bounds__(1024, 2)
 __global__ void BitonicSort_global(DTYPE* __restrict__ data, int j, int k, int size) {
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
     const int stride = blockDim.x * gridDim.x;
-
-    #pragma unroll 4
-    for (int i = tid; i < size; i += stride) {
-        const int partner = i ^ j;
-        if (i < partner && partner < size) {
-            const bool ascending = ((i & k) == 0);
-            DTYPE a = data[i];
-            DTYPE b = data[partner];
-            if ((a > b) == ascending) {
-                data[i] = b;
-                data[partner] = a;
+    
+    // Try vectorized path for better memory throughput
+    if (j >= 4 && (tid * 4) < size) {
+        const int vec_stride = stride * 4;
+        for (int base_i = tid * 4; base_i < size - 3; base_i += vec_stride) {
+            // Load 4 consecutive values at once
+            int4 vals = *reinterpret_cast<const int4*>(&data[base_i]);
+            bool modified = false;
+            
+            // Process each value in the vector
+            #pragma unroll
+            for (int vi = 0; vi < 4; vi++) {
+                int i = base_i + vi;
+                int partner = i ^ j;
+                if (i < partner && partner < size) {
+                    bool ascending = ((i & k) == 0);
+                    int* val_ptr = (vi == 0) ? &vals.x : 
+                                  (vi == 1) ? &vals.y :
+                                  (vi == 2) ? &vals.z : &vals.w;
+                    int a = *val_ptr;
+                    int b = data[partner];
+                    if ((a > b) == ascending) {
+                        *val_ptr = b;
+                        data[partner] = a;
+                        modified = true;
+                    }
+                }
+            }
+            
+            // Write back if any value was modified
+            if (modified) {
+                *reinterpret_cast<int4*>(&data[base_i]) = vals;
+            }
+        }
+        
+        // Handle remaining elements
+        for (int i = ((size >> 2) << 2) + tid; i < size; i += stride) {
+            const int partner = i ^ j;
+            if (i < partner && partner < size) {
+                const bool ascending = ((i & k) == 0);
+                DTYPE a = data[i];
+                DTYPE b = data[partner];
+                if ((a > b) == ascending) {
+                    data[i] = b;
+                    data[partner] = a;
+                }
+            }
+        }
+    } else {
+        // Scalar path with aggressive unrolling
+        #pragma unroll 8
+        for (int i = tid; i < size; i += stride) {
+            const int partner = i ^ j;
+            if (i < partner && partner < size) {
+                const bool ascending = ((i & k) == 0);
+                DTYPE a = data[i];
+                DTYPE b = data[partner];
+                if ((a > b) == ascending) {
+                    data[i] = b;
+                    data[partner] = a;
+                }
             }
         }
     }
@@ -256,7 +306,100 @@ __global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, i
     if (g7 < size) data[g7] = s[t + 7 * bd];
 }
 
+// Persistent kernel approach - process multiple k/j phases in one launch
+__global__ void __launch_bounds__(1024, 1) BitonicSort_persistent(
+    DTYPE* __restrict__ data, 
+    volatile int* __restrict__ phase_counter, 
+    int size,
+    int start_k,
+    int end_k) {
+    
+    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int stride = blockDim.x * gridDim.x;
+    
+    // Process multiple k phases without returning to host
+    for (int k = start_k; k <= end_k; k <<= 1) {
+        // All threads in grid must process same k
+        if (tid == 0 && gridDim.x > 1) {
+            atomicAdd((int*)phase_counter, 1);
+        }
+        __syncthreads();
+        if (gridDim.x > 1) {
+            // Grid-wide synchronization using atomics
+            __threadfence();
+            if (threadIdx.x == 0) {
+                // Use block-level atomics for better efficiency
+                int expected = gridDim.x * ((k >> (__builtin_ctz(start_k) + 1)) + 1);
+                volatile int* vol_counter = phase_counter;
+                while (*vol_counter < expected) {
+                    // Small delay to reduce memory contention
+                    for (int delay = 0; delay < 100; delay++) {
+                        __threadfence();
+                    }
+                }
+            }
+            __syncthreads();
+        }
+        
+        // Process all j phases for this k
+        for (int j = k >> 1; j > 0; j >>= 1) {
+            // Vectorized loads when possible
+            if ((j >= 4) && ((tid * 4) < size)) {
+                int4 indices;
+                indices.x = tid * 4;
+                indices.y = indices.x + 1;
+                indices.z = indices.x + 2;
+                indices.w = indices.x + 3;
+                
+                if (indices.w < size) {
+                    // Load 4 values at once
+                    int4 values = *reinterpret_cast<int4*>(&data[indices.x]);
+                    
+                    // Process each value
+                    #pragma unroll
+                    for (int vi = 0; vi < 4; vi++) {
+                        int i = indices.x + vi;
+                        int partner = i ^ j;
+                        if (i < partner && partner < size) {
+                            bool ascending = ((i & k) == 0);
+                            int* val_ptr = (vi == 0) ? &values.x : 
+                                          (vi == 1) ? &values.y :
+                                          (vi == 2) ? &values.z : &values.w;
+                            int a = *val_ptr;
+                            int b = data[partner];
+                            if ((a > b) == ascending) {
+                                *val_ptr = b;
+                                data[partner] = a;
+                            }
+                        }
+                    }
+                    
+                    // Write back 4 values
+                    *reinterpret_cast<int4*>(&data[indices.x]) = values;
+                }
+            } else {
+                // Scalar path for non-aligned or small j
+                #pragma unroll 8
+                for (int i = tid; i < size; i += stride) {
+                    const int partner = i ^ j;
+                    if (i < partner && partner < size) {
+                        const bool ascending = ((i & k) == 0);
+                        DTYPE a = data[i];
+                        DTYPE b = data[partner];
+                        if ((a > b) == ascending) {
+                            data[i] = b;
+                            data[partner] = a;
+                        }
+                    }
+                }
+            }
+            __syncthreads();
+        }
+    }
+}
+
 // Implement your GPU device kernel(s) here (e.g., the bitonic sort kernel).
+
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
 int main(int argc, char* argv[]) {
@@ -366,40 +509,60 @@ if (size < paddedSize) {
 // Wait for padding before compute
 cudaStreamSynchronize(stream1);
 
-// Perform bitonic sort on GPU
-// Strategy: run global-memory phases while partners cross 4*blockDim tiles.
-// Then run one batched shared-memory pass that completes remaining phases.
+// Perform bitonic sort on GPU with optimized strategy
 int threadsPerBlock = 1024;
-int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
-int minBlocks = prop.multiProcessorCount * 32;
-if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 
+// Allocate phase counter for persistent kernel synchronization
+int* d_phase_counter = nullptr;
+cudaMalloc(&d_phase_counter, sizeof(int));
+cudaMemset(d_phase_counter, 0, sizeof(int));
+
+// Use persistent kernel for early k phases to reduce launch overhead
+// Process k=2 through k=1024 in one kernel launch (10 phases)
+int persistent_blocks = prop.multiProcessorCount * 4; // Use all SMs with 4 blocks each
+BitonicSort_persistent<<<persistent_blocks, threadsPerBlock, 0, stream1>>>(
+    d_arr, d_phase_counter, paddedSize, 2, min(1024, paddedSize));
+
+// For larger k values, use hybrid approach
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
-size_t sharedMem8x = (size_t)threadsPerBlock * 8 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
-cudaFuncSetCacheConfig(BitonicSort_shared_batched_8x, cudaFuncCachePreferShared);
 cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
 
-/* H100 KERNEL EXECUTION OPTIMIZATION:
- * Execute all sorting kernels in stream1 for proper dependency management
- * This ensures sorting only begins after H2D transfer and padding complete
- * H100's improved SM scheduling and larger L2 cache (50MB) help hide latencies
- */
-for (int k = 2; k <= paddedSize; k <<= 1) {
+for (int k = 2048; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
-    // Global phases while partners cross 2*blockDim tiles
-    for (; j >= (threadsPerBlock << 1); j >>= 1) {
-        BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
+    
+    // For very large j, use persistent kernel for multiple phases
+    if (j >= (threadsPerBlock << 3)) {
+        // Find the cutoff j value  
+        int cutoff_j = threadsPerBlock << 2;
+        int phases = 0;
+        for (int test_j = j; test_j > cutoff_j; test_j >>= 1) phases++;
+        
+        if (phases >= 3) {
+            // Use persistent kernel for these phases
+            cudaMemset(d_phase_counter, 0, sizeof(int));
+            BitonicSort_persistent<<<persistent_blocks, threadsPerBlock, 0, stream1>>>(
+                d_arr, d_phase_counter, paddedSize, k, k);
+            j = 0; // Skip to next k
+        } else {
+            // Use regular global kernels with optimal grid size for latency hiding
+            int blocksPerGrid = prop.multiProcessorCount * 64; // More blocks for better latency hiding
+            for (; j >= (threadsPerBlock << 2); j >>= 1) {
+                BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
+            }
+        }
     }
-    // One batched shared-memory 4x-tile pass per k for remaining j
+    
+    // Shared memory phase for remaining j values
     if (j > 0) {
         int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
-        int minBlocks4x = prop.multiProcessorCount * 16;
-        if (blocks4x < minBlocks4x) blocks4x = minBlocks4x;
+        blocks4x = max(blocks4x, prop.multiProcessorCount * 8);
         BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x, stream1>>>(d_arr, k, paddedSize);
     }
 }
+
+cudaFree(d_phase_counter);
 // Start D2H asynchronously now; we'll time only the sync in D2H window
 DTYPE* arrPinnedOut = nullptr;
 cudaMallocHost(&arrPinnedOut, (size_t)size * sizeof(DTYPE));
