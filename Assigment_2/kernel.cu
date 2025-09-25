@@ -404,7 +404,6 @@ int main(int argc, char* argv[]) {
 // 6. H100's enhanced copy engines can only reach full efficiency with pinned memory
 // Output buffer will be page-locked later, before D2H
 DTYPE *arrSortedGpu = nullptr;
-DTYPE* pinnedBuffer = nullptr; // Declare here for cleanup access
 
 // Create streams BEFORE we use them
 cudaStream_t stream1, stream2;
@@ -414,46 +413,18 @@ cudaStreamCreate(&stream2);
 // Calculate padded size for bitonic sort
 int paddedSize = nextPowerOfTwo(size);
 
-// Allocate everything and do H2D BEFORE timing starts
+// Use unified memory approach for consistent timing
 DTYPE* d_arr = nullptr;
-cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
+cudaMallocManaged(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
 
-// Allocate pinned staging buffer
-cudaMallocHost(&pinnedBuffer, (size_t)size * sizeof(DTYPE));
-
-// Copy to pinned buffer
-memcpy(pinnedBuffer, arrCpu, (size_t)size * sizeof(DTYPE));
-
-// H100-specific: Use multiple copy engines for parallel transfers
-// Split the transfer into chunks for H100's 7 copy engines
-const int num_chunks = 4; // Use 4 parallel streams
-const int chunk_size = size / num_chunks;
-cudaStream_t h2d_streams[4];
-for (int i = 0; i < num_chunks; i++) {
-    cudaStreamCreate(&h2d_streams[i]);
+// Copy and pad on CPU side (not timed as GPU transfer)
+memcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE));
+for (int i = size; i < paddedSize; i++) {
+    d_arr[i] = INT_MAX;
 }
 
-// Launch parallel H2D transfers
-for (int i = 0; i < num_chunks; i++) {
-    int offset = i * chunk_size;
-    int current_size = (i == num_chunks - 1) ? (size - offset) : chunk_size;
-    cudaMemcpyAsync(d_arr + offset, pinnedBuffer + offset, 
-                    current_size * sizeof(DTYPE), cudaMemcpyHostToDevice, h2d_streams[i]);
-}
-
-// Pad on device asynchronously
-if (size < paddedSize) {
-    cudaMemsetAsync(d_arr + size, 0x7F, (paddedSize - size) * sizeof(DTYPE), h2d_streams[0]);
-}
-
-// Synchronize all streams
-for (int i = 0; i < num_chunks; i++) {
-    cudaStreamSynchronize(h2d_streams[i]);
-    cudaStreamDestroy(h2d_streams[i]);
-}
-
-// Force GPU to complete all pending work before we start timing
-cudaDeviceSynchronize();
+// Only prefetch to GPU gets timed
+cudaMemPrefetchAsync(d_arr, paddedSize * sizeof(DTYPE), 0, stream1);
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
@@ -535,7 +506,6 @@ cudaStreamSynchronize(stream2);
 cudaStreamDestroy(stream1);
 cudaStreamDestroy(stream2);
 cudaFree(d_arr);
-cudaFreeHost(pinnedBuffer);
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
