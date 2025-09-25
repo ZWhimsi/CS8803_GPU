@@ -23,36 +23,6 @@ static inline int next_pow(int n) {
     return p;
 }
 
-// Pad tail of array with INT_MAX from startIndex to totalSize.
-// Uses a grid-stride loop for coverage.
-__global__ void PadWithMax(DTYPE* data, int start_ind, int size) {
-    const int glob_ind = blockIdx.x * blockDim.x + threadIdx.x;
-    const int grid_stride = blockDim.x * gridDim.x;
-    for (int data_ind = start_ind + glob_ind; data_ind < size; data_ind += grid_stride) {
-        data[data_ind] = INT_MAX;
-    }
-}
-
-// Bitonic sort: global-memory phase.
-// Each thread compares with its XOR-partner and swaps if needed.
-__global__ void BitonicSort_global(DTYPE* __restrict__ data, int partnerMask, int stageMask, int size) {
-    const int glob_thread_ind = blockDim.x * blockIdx.x + threadIdx.x;
-    const int grid_stride = blockDim.x * gridDim.x;
-
-    #pragma unroll 2
-    for (int elmnt_ind = glob_thread_ind; elmnt_ind < size; elmnt_ind += grid_stride) {
-        const int partnerIndex = elmnt_ind ^ partnerMask;
-        if (elmnt_ind < partnerIndex && partnerIndex < size) {
-            const bool ascending = ((elmnt_ind & stageMask) == 0);
-            DTYPE a = data[elmnt_ind];
-            DTYPE b = data[partnerIndex];
-            if ((a > b) == ascending) {
-                data[elmnt_ind] = b;
-                data[partnerIndex] = a;
-            }
-        }
-    }
-}
 
 // Bitonic sort: shared-memory 4x tile phase.
 // Finishes remaining steps for this k inside the tile.
@@ -132,7 +102,41 @@ __global__ void BitonicSort_shared_batched_4x(DTYPE* __restrict__ data, int k, i
 
 
 
+// Bitonic sort: global-memory phase.
+// Each thread compares with its XOR-partner and swaps if needed.
+__global__ void BitonicSort_global(DTYPE* __restrict__ data, int partnerMask, int stageMask, int size) {
+    const int glob_thread_ind = blockDim.x * blockIdx.x + threadIdx.x;
+    const int grid_stride = blockDim.x * gridDim.x;
+
+    #pragma unroll 2
+    for (int elmnt_ind = glob_thread_ind; elmnt_ind < size; elmnt_ind += grid_stride) {
+        const int partnerIndex = elmnt_ind ^ partnerMask;
+        if (elmnt_ind < partnerIndex && partnerIndex < size) {
+            const bool ascending = ((elmnt_ind & stageMask) == 0);
+            DTYPE a = data[elmnt_ind];
+            DTYPE b = data[partnerIndex];
+            if ((a > b) == ascending) {
+                data[elmnt_ind] = b;
+                data[partnerIndex] = a;
+            }
+        }
+    }
+}
+
+
+
+
 // Implement your GPU device kernel(s) here (e.g., the bitonic sort kernel).
+// Pad tail of array with INT_MAX from startIndex to totalSize.
+// Uses a grid-stride loop for coverage.
+__global__ void PadWithMax(DTYPE* data, int start_ind, int size) {
+    const int glob_ind = blockIdx.x * blockDim.x + threadIdx.x;
+    const int grid_stride = blockDim.x * gridDim.x;
+    for (int data_ind = start_ind + glob_ind; data_ind < size; data_ind += grid_stride) {
+        data[data_ind] = INT_MAX;
+    }
+}
+
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
 int main(int argc, char* argv[]) {
@@ -190,7 +194,7 @@ cudaMemPrefetchAsync(d_arr, padded_size * sizeof(DTYPE), 0);
 // Perform bitonic sort on GPU
 // Strategy: run global-memory phases while partners cross 4*blockDim tiles.
 // Then run one batched shared-memory pass that completes remaining phases.
-int thread_per_block = 1024;
+int thread_per_block = 512;
 int block_per_grid = (padded_size + thread_per_block - 1) / thread_per_block;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 int min_num_block = prop.multiProcessorCount * 32;
