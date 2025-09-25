@@ -301,6 +301,13 @@ int main(int argc, char* argv[]) {
     printf("D2H (ms): %f\n", d2hMs);
     printf("CPU Sort (ms): %f\n", cpuMs);
 
+    // Standard summary lines expected by grader
+    float gpuTotalTime = h2dMs + kMs + d2hMs;
+    float meps = size / (gpuTotalTime * 0.001f) / 1e6f;
+    printf("\033[1;34mArray size         :\033[0m %d\n", size);
+    printf("\033[1;34mGPU Sort Time (ms) :\033[0m %f\n", gpuTotalTime);
+    printf("\033[1;34mGPU Sort Speed     :\033[0m %f million elements per second\n", meps);
+
     if (ok) printf("\033[1;32mFUNCTIONAL SUCCESS\n\033[0m");
     else    printf("\033[1;31mFUNCTIONCAL FAIL\n\033[0m");
 
