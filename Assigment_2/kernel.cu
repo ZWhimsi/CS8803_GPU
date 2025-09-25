@@ -307,49 +307,44 @@ __global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, i
 }
 
 
-// Specialized kernel for small k values (k <= 32) using warp-level primitives
-__global__ void __launch_bounds__(1024, 2) BitonicSort_warp_optimized(DTYPE* __restrict__ data, int k_start, int k_end, int size) {
-    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    const int lane = threadIdx.x & 31;
-    const int warp_id = tid >> 5;
-    const int total_warps = (blockDim.x * gridDim.x) >> 5;
+
+// Ultra-optimized kernel that processes multiple elements per thread
+__global__ void __launch_bounds__(256, 8) BitonicSort_coalesced_multi(
+    DTYPE* __restrict__ data, 
+    int j, 
+    int k, 
+    int size,
+    int elements_per_thread) {
     
-    // Each warp processes multiple 32-element segments
-    for (int seg = warp_id; seg < (size >> 5); seg += total_warps) {
-        int idx = (seg << 5) + lane;
-        DTYPE val = (idx < size) ? data[idx] : INT_MAX;
-        
-        // Process multiple k values in one kernel
-        for (int k = k_start; k <= k_end && k <= 32; k <<= 1) {
-            for (int j = k >> 1; j > 0; j >>= 1) {
-                bool ascending = ((idx & k) == 0);
-                DTYPE other = __shfl_xor_sync(0xffffffff, val, j);
-                
-                bool swap = false;
-                if (idx < size) {
-                    int partner = idx ^ j;
-                    if (partner < size) {
-                        if (j < 32) {
-                            // Within warp - use shuffle result
-                            swap = (lane < (lane ^ j)) && ((val > other) == ascending);
-                            if (swap) val = other;
-                        } else {
-                            // Cross-warp - use global memory
-                            DTYPE partner_val = data[partner];
-                            if (idx < partner && (val > partner_val) == ascending) {
-                                data[idx] = partner_val;
-                                data[partner] = val;
-                                val = partner_val;
-                            }
-                        }
-                    }
-                }
-            }
+    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int total_threads = blockDim.x * gridDim.x;
+    const int chunk_size = elements_per_thread;
+    
+    // Process multiple elements per thread for better memory coalescing
+    for (int base = tid * chunk_size; base < size; base += total_threads * chunk_size) {
+        // Prefetch data into registers
+        DTYPE vals[8];
+        #pragma unroll
+        for (int i = 0; i < chunk_size && base + i < size; i++) {
+            vals[i] = data[base + i];
         }
         
-        // Write back
-        if (idx < size && (seg << 5) + lane < size) {
-            data[idx] = val;
+        // Process each element
+        #pragma unroll
+        for (int i = 0; i < chunk_size && base + i < size; i++) {
+            int idx = base + i;
+            int partner = idx ^ j;
+            
+            if (idx < partner && partner < size) {
+                bool ascending = ((idx & k) == 0);
+                DTYPE partner_val = data[partner];
+                
+                if ((vals[i] > partner_val) == ascending) {
+                    // Write both values in coalesced manner
+                    data[idx] = partner_val;
+                    data[partner] = vals[i];
+                }
+            }
         }
     }
 }
@@ -452,72 +447,48 @@ if (size < paddedSize) {
 // Wait for padding before compute
 cudaStreamSynchronize(stream1);
 
-// Perform bitonic sort on GPU with aggressive optimizations
-int threadsPerBlock = 1024;
+// Perform bitonic sort on GPU with radical optimizations
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 
-// Configure kernels for optimal performance
-size_t sharedMem8x = (size_t)threadsPerBlock * 8 * sizeof(DTYPE);
+// Use smaller blocks for better occupancy
+int threadsPerBlock = 256;
+int elements_per_thread = 8;
+
+// Configure shared memory kernels
+size_t sharedMem8x = (size_t)1024 * 8 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_8x, cudaFuncCachePreferShared);
-cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
 
-// Maximum blocks for latency hiding
-int maxBlocks = prop.multiProcessorCount * 80;
+// Calculate optimal grid size - use massive oversubscription
+int total_elements = paddedSize;
+int threads_needed = (total_elements + elements_per_thread - 1) / elements_per_thread;
+int blocks_needed = (threads_needed + threadsPerBlock - 1) / threadsPerBlock;
+int maxBlocks = min(blocks_needed * 4, prop.multiProcessorCount * 256); // Massive oversubscription
 
-// PHASE 1: Use warp-optimized kernel for k <= 32 (5 phases in one launch)
-if (paddedSize >= 32) {
-    int warpBlocks = prop.multiProcessorCount * 64;
-    BitonicSort_warp_optimized<<<warpBlocks, threadsPerBlock, 0, stream1>>>(d_arr, 2, 32, paddedSize);
-}
-
-// PHASE 2: Handle medium k values (64 to 8192) with fewer launches
-for (int k = 64; k <= min(8192, paddedSize); k <<= 1) {
+// Process all k values
+for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
     
-    // Use vectorized global kernel for large j
-    if (j >= (threadsPerBlock << 3)) {
-        // Process multiple j values in fewer launches
-        while (j >= (threadsPerBlock << 3)) {
-            BitonicSort_global<<<maxBlocks, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
+    // Use different strategies based on j value
+    if (j >= 65536) {
+        // For very large j, use coalesced multi-element kernel
+        while (j >= 8192) {
+            BitonicSort_coalesced_multi<<<maxBlocks, threadsPerBlock, 0, stream1>>>(
+                d_arr, j, k, paddedSize, elements_per_thread);
             j >>= 1;
-            if (j >= (threadsPerBlock << 3)) {
-                BitonicSort_global<<<maxBlocks, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
-                j >>= 1;
-            }
         }
     }
     
-    // Use 8x shared memory kernel for remaining phases
+    // For medium j, use vectorized global kernel
+    while (j >= 4096) {
+        BitonicSort_global<<<maxBlocks, 1024, 0, stream1>>>(d_arr, j, k, paddedSize);
+        j >>= 1;
+    }
+    
+    // For small j, use 8x shared memory kernel
     if (j > 0) {
-        int blocks8x = (paddedSize + (threadsPerBlock << 3) - 1) / (threadsPerBlock << 3);
-        blocks8x = max(blocks8x, prop.multiProcessorCount * 12);
-        BitonicSort_shared_batched_8x<<<blocks8x, threadsPerBlock, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
-    }
-}
-
-// PHASE 3: Handle large k values with optimized strategy
-for (int k = 16384; k <= paddedSize; k <<= 1) {
-    int j = k >> 1;
-    
-    // Count phases needed
-    int phase_count = 0;
-    for (int test_j = j; test_j >= (threadsPerBlock << 3); test_j >>= 1) {
-        phase_count++;
-    }
-    
-    // Use very high block count for these expensive phases
-    int superBlocks = min(prop.multiProcessorCount * 100, 65535);
-    
-    // Process global phases
-    for (; j >= (threadsPerBlock << 3); j >>= 1) {
-        BitonicSort_global<<<superBlocks, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
-    }
-    
-    // Shared memory phase
-    if (j > 0) {
-        int blocks8x = (paddedSize + (threadsPerBlock << 3) - 1) / (threadsPerBlock << 3);
-        blocks8x = max(blocks8x, prop.multiProcessorCount * 16);
-        BitonicSort_shared_batched_8x<<<blocks8x, threadsPerBlock, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
+        int blocks8x = (paddedSize + 8192 - 1) / 8192;
+        blocks8x = max(blocks8x, prop.multiProcessorCount * 32);
+        BitonicSort_shared_batched_8x<<<blocks8x, 1024, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
     }
 }
 // Start D2H asynchronously now; we'll time only the sync in D2H window
