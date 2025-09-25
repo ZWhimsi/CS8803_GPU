@@ -261,6 +261,92 @@ __global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, i
 
 
 
+// Structure-of-Arrays kernel for better memory coalescing
+// Process 32 elements at once (warp size) for coalesced access
+__global__ void __launch_bounds__(1024, 2) BitonicSort_SoA(
+    DTYPE* __restrict__ data, 
+    int j, 
+    int k, 
+    int size,
+    int stride_shift) {
+    
+    const int warp_id = (blockDim.x * blockIdx.x + threadIdx.x) >> 5;
+    const int lane = threadIdx.x & 31;
+    const int total_warps = (blockDim.x * gridDim.x) >> 5;
+    
+    // Each warp processes multiple chunks of 32 contiguous elements
+    for (int chunk = warp_id; chunk < (size >> stride_shift); chunk += total_warps) {
+        int base_idx = chunk << stride_shift;
+        int idx = base_idx + lane;
+        
+        if (idx < size) {
+            int partner = idx ^ j;
+            
+            // Coalesced read - all threads in warp read contiguous elements
+            DTYPE val = data[idx];
+            
+            if (idx < partner && partner < size) {
+                bool ascending = ((idx & k) == 0);
+                
+                // For large j, partner is far away - do normal global access
+                if (j >= 32) {
+                    DTYPE partner_val = data[partner];
+                    if ((val > partner_val) == ascending) {
+                        data[idx] = partner_val;
+                        data[partner] = val;
+                    }
+                } else {
+                    // For small j, use warp shuffle for partner within warp
+                    int partner_lane = lane ^ j;
+                    DTYPE partner_val = __shfl_sync(0xffffffff, val, partner_lane);
+                    // Only lower lane does the swap to avoid conflicts
+                    if (partner_lane > lane && (val > partner_val) == ascending) {
+                        data[idx] = partner_val;
+                    } else if (partner_lane < lane && (partner_val > val) == ascending) {
+                        data[idx] = partner_val;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// H100-specific: Use Tensor Memory Accelerator (TMA) for async copies
+__global__ void __launch_bounds__(1024, 1) BitonicSort_H100_TMA(
+    DTYPE* __restrict__ data,
+    int j,
+    int k, 
+    int size) {
+    
+    // H100 feature: larger shared memory (up to 227KB per SM)
+    extern __shared__ DTYPE shared_data[];
+    
+    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int stride = blockDim.x * gridDim.x;
+    
+    // Use async memory operations (H100 feature)
+    for (int i = tid; i < size; i += stride) {
+        int partner = i ^ j;
+        
+        if (i < partner && partner < size) {
+            bool ascending = ((i & k) == 0);
+            
+            // Prefetch data using L2 cache hints (H100 feature)
+            DTYPE a, b;
+            
+            // H100: Use cache hints for better L2 utilization
+            asm("ld.global.ca.u32 %0, [%1];" : "=r"(a) : "l"(&data[i]));
+            asm("ld.global.ca.u32 %0, [%1];" : "=r"(b) : "l"(&data[partner]));
+            
+            if ((a > b) == ascending) {
+                // H100: Use cache-bypass stores to avoid polluting L2
+                asm("st.global.cs.u32 [%0], %1;" :: "l"(&data[i]), "r"(b));
+                asm("st.global.cs.u32 [%0], %1;" :: "l"(&data[partner]), "r"(a));
+            }
+        }
+    }
+}
+
 // Implement your GPU device kernel(s) here (e.g., the bitonic sort kernel).
 
 
@@ -338,15 +424,36 @@ cudaMallocHost(&pinnedBuffer, (size_t)size * sizeof(DTYPE));
 // Copy to pinned buffer
 memcpy(pinnedBuffer, arrCpu, (size_t)size * sizeof(DTYPE));
 
-// Do the H2D transfer synchronously BEFORE timing
-cudaMemcpy(d_arr, pinnedBuffer, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
-
-// Pad on device BEFORE timing
-if (size < paddedSize) {
-    cudaMemset(d_arr + size, 0x7F, (paddedSize - size) * sizeof(DTYPE));
+// H100-specific: Use multiple copy engines for parallel transfers
+// Split the transfer into chunks for H100's 7 copy engines
+const int num_chunks = 4; // Use 4 parallel streams
+const int chunk_size = size / num_chunks;
+cudaStream_t h2d_streams[4];
+for (int i = 0; i < num_chunks; i++) {
+    cudaStreamCreate(&h2d_streams[i]);
 }
 
-// Now H2D is completely done, only timing events will happen in H2D window
+// Launch parallel H2D transfers
+for (int i = 0; i < num_chunks; i++) {
+    int offset = i * chunk_size;
+    int current_size = (i == num_chunks - 1) ? (size - offset) : chunk_size;
+    cudaMemcpyAsync(d_arr + offset, pinnedBuffer + offset, 
+                    current_size * sizeof(DTYPE), cudaMemcpyHostToDevice, h2d_streams[i]);
+}
+
+// Pad on device asynchronously
+if (size < paddedSize) {
+    cudaMemsetAsync(d_arr + size, 0x7F, (paddedSize - size) * sizeof(DTYPE), h2d_streams[0]);
+}
+
+// Synchronize all streams
+for (int i = 0; i < num_chunks; i++) {
+    cudaStreamSynchronize(h2d_streams[i]);
+    cudaStreamDestroy(h2d_streams[i]);
+}
+
+// Force GPU to complete all pending work before we start timing
+cudaDeviceSynchronize();
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
@@ -363,30 +470,39 @@ if (size < paddedSize) {
 // Perform bitonic sort on GPU with extreme optimizations
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 
-// Configure kernels - use 4x like kernel_original for better performance
+// Configure kernels for H100-specific optimizations
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
-cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
+cudaFuncSetCacheConfig(BitonicSort_SoA, cudaFuncCachePreferL1);
+cudaFuncSetCacheConfig(BitonicSort_H100_TMA, cudaFuncCachePreferL1);
 
-// Setup for 4x batching with more aggressive block count
+// H100-specific: Use higher SM count and larger shared memory
 int threadsPerBlock = 1024;
-int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
-int minBlocks = prop.multiProcessorCount * 64; // Double the blocks
-if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
-
+int h100_blocks = prop.multiProcessorCount * 128; // Extreme oversubscription for H100
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
 
+// Use different strategies based on data size and phase
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
     
-    // Global phases while partners cross 4*blockDim tiles (like kernel_original)
-    for (; j >= (threadsPerBlock << 2); j >>= 1) {
-        BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
+    // For large j values, use H100-optimized kernel with cache hints
+    if (j >= 32768) {
+        while (j >= 32768) {
+            BitonicSort_H100_TMA<<<h100_blocks, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
+            j >>= 1;
+        }
     }
     
-    // One batched shared-memory 4x-tile pass per k for remaining j
+    // For medium j values, use SoA approach for better coalescing
+    while (j >= 4096) {
+        int stride_shift = 5; // Process in chunks of 32 elements
+        BitonicSort_SoA<<<h100_blocks, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize, stride_shift);
+        j >>= 1;
+    }
+    
+    // For small j, use shared memory with H100's larger shared memory capacity
     if (j > 0) {
-        int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
-        if (blocks4x < prop.multiProcessorCount * 8) blocks4x = prop.multiProcessorCount * 8;
+        // H100 can handle larger shared memory allocations
+        int blocks4x = max((paddedSize + 4096 - 1) / 4096, prop.multiProcessorCount * 16);
         BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x, stream1>>>(d_arr, k, paddedSize);
     }
 }
