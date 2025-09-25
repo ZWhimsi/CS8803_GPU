@@ -57,6 +57,7 @@ __global__ void BitonicSort_global(DTYPE* __restrict__ data, int j, int k, int s
 
 // Batched shared-memory phase processing a 4x block tile.
 // It executes all remaining j < 4*blockDim.x steps for a given k.
+__launch_bounds__(1024, 2)
 __global__ void BitonicSort_shared_batched_4x(DTYPE* __restrict__ data, int k, int size) {
     extern __shared__ DTYPE s[]; // size: 4 * blockDim.x
     const int bd = blockDim.x;
@@ -346,7 +347,8 @@ for (int k = 2; k <= paddedSize; k <<= 1) {
     // One batched shared-memory 4x-tile pass per k for remaining j
     if (j > 0) {
         int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
-        if (blocks4x < prop.multiProcessorCount * 8) blocks4x = prop.multiProcessorCount * 8;
+        int minBlocks4x = prop.multiProcessorCount * 16;
+        if (blocks4x < minBlocks4x) blocks4x = minBlocks4x;
         BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x, stream1>>>(d_arr, k, paddedSize);
     }
 }
