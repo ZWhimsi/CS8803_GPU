@@ -306,34 +306,6 @@ __global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, i
     if (g7 < size) data[g7] = s[t + 7 * bd];
 }
 
-// Multi-phase kernel - process all j phases for a single k in one launch
-__global__ void __launch_bounds__(1024, 1) BitonicSort_multi_j(
-    DTYPE* __restrict__ data, 
-    int k,
-    int max_j,
-    int size) {
-    
-    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    const int stride = blockDim.x * gridDim.x;
-    
-    // Process all j phases for this k value
-    for (int j = max_j; j > 0; j >>= 1) {
-        #pragma unroll 8
-        for (int i = tid; i < size; i += stride) {
-            const int partner = i ^ j;
-            if (i < partner && partner < size) {
-                const bool ascending = ((i & k) == 0);
-                DTYPE a = data[i];
-                DTYPE b = data[partner];
-                if ((a > b) == ascending) {
-                    data[i] = b;
-                    data[partner] = a;
-                }
-            }
-        }
-        __syncthreads();
-    }
-}
 
 // Implement your GPU device kernel(s) here (e.g., the bitonic sort kernel).
 
@@ -446,7 +418,7 @@ if (size < paddedSize) {
 // Wait for padding before compute
 cudaStreamSynchronize(stream1);
 
-// Perform bitonic sort on GPU with optimized strategy
+// Perform bitonic sort on GPU
 int threadsPerBlock = 1024;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 
@@ -454,42 +426,21 @@ size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
 cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
 
-// Optimal grid size for latency hiding
-int blocksPerGrid = prop.multiProcessorCount * 64;
+// High block count for better latency hiding
+int blocksPerGrid = prop.multiProcessorCount * 48;
 
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
     
-    // For phases with many j iterations, use multi-j kernel to reduce launches
-    if (j >= (threadsPerBlock << 3)) {
-        // Count how many j phases we'll process
-        int j_count = 0;
-        for (int test_j = j; test_j >= (threadsPerBlock << 2); test_j >>= 1) {
-            j_count++;
-        }
-        
-        if (j_count >= 4) {
-            // Use multi-j kernel for better efficiency
-            BitonicSort_multi_j<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(
-                d_arr, k, j, paddedSize);
-            j = (threadsPerBlock << 2) >> 1; // Continue with remaining phases
-        } else {
-            // Use regular global kernels
-            for (; j >= (threadsPerBlock << 2); j >>= 1) {
-                BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
-            }
-        }
-    } else if (j >= (threadsPerBlock << 2)) {
-        // Global phase
-        for (; j >= (threadsPerBlock << 2); j >>= 1) {
-            BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
-        }
+    // Global phases while partners cross 4*blockDim tiles
+    for (; j >= (threadsPerBlock << 2); j >>= 1) {
+        BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
     }
     
     // Shared memory phase for remaining j values
     if (j > 0) {
         int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
-        blocks4x = max(blocks4x, prop.multiProcessorCount * 8);
+        blocks4x = max(blocks4x, prop.multiProcessorCount * 16);
         BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x, stream1>>>(d_arr, k, paddedSize);
     }
 }
