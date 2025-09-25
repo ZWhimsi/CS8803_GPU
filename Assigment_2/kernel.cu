@@ -11,13 +11,13 @@
 #include <limits.h>
 
 // Return true if n is a power of two (n > 0)
-static inline bool isPowerOfTwo(int n) {
+static inline bool Pow_two_checker(int n) {
     return n > 0 && (n & (n - 1)) == 0;
 }
 
 // Return the next power of two >= n
-static inline int nextPowerOfTwo(int n) {
-    if (isPowerOfTwo(n)) return n;
+static inline int next_pow(int n) {
+    if (Pow_two_checker(n)) return n;
     int p = 1;
     while (p < n) p <<= 1;
     return p;
@@ -25,30 +25,30 @@ static inline int nextPowerOfTwo(int n) {
 
 // Pad tail of array with INT_MAX from startIndex to totalSize.
 // Uses a grid-stride loop for coverage.
-__global__ void PadWithMax(DTYPE* data, int startIndex, int totalSize) {
-    int globalThreadId = blockIdx.x * blockDim.x + threadIdx.x;
-    int gridStride = blockDim.x * gridDim.x;
-    for (int dataIndex = startIndex + globalThreadId; dataIndex < totalSize; dataIndex += gridStride) {
-        data[dataIndex] = INT_MAX;
+__global__ void PadWithMax(DTYPE* data, int start_ind, int size) {
+    const int glob_ind = blockIdx.x * blockDim.x + threadIdx.x;
+    const int grid_stride = blockDim.x * gridDim.x;
+    for (int data_ind = start_ind + glob_ind; data_ind < size; data_ind += grid_stride) {
+        data[data_ind] = INT_MAX;
     }
 }
 
 // Bitonic sort: global-memory phase.
 // Each thread compares with its XOR-partner and swaps if needed.
-__global__ void BitonicSort_global(DTYPE* __restrict__ data, int partnerMask, int stageMask, int totalSize) {
-    const int globalThreadIndex = blockDim.x * blockIdx.x + threadIdx.x;
-    const int gridStride = blockDim.x * gridDim.x;
+__global__ void BitonicSort_global(DTYPE* __restrict__ data, int partnerMask, int stageMask, int size) {
+    const int glob_thread_ind = blockDim.x * blockIdx.x + threadIdx.x;
+    const int grid_stride = blockDim.x * gridDim.x;
 
     #pragma unroll 2
-    for (int elementIndex = globalThreadIndex; elementIndex < totalSize; elementIndex += gridStride) {
-        const int partnerIndex = elementIndex ^ partnerMask;
-        if (elementIndex < partnerIndex && partnerIndex < totalSize) {
-            const bool sortAscending = ((elementIndex & stageMask) == 0);
-            DTYPE valueSelf = data[elementIndex];
-            DTYPE valuePartner = data[partnerIndex];
-            if ((valueSelf > valuePartner) == sortAscending) {
-                data[elementIndex] = valuePartner;
-                data[partnerIndex] = valueSelf;
+    for (int elmnt_ind = glob_thread_ind; elmnt_ind < size; elmnt_ind += grid_stride) {
+        const int partnerIndex = elmnt_ind ^ partnerMask;
+        if (elmnt_ind < partnerIndex && partnerIndex < size) {
+            const bool ascending = ((elmnt_ind & stageMask) == 0);
+            DTYPE a = data[elmnt_ind];
+            DTYPE b = data[partnerIndex];
+            if ((a > b) == ascending) {
+                data[elmnt_ind] = b;
+                data[partnerIndex] = a;
             }
         }
     }
@@ -57,154 +57,80 @@ __global__ void BitonicSort_global(DTYPE* __restrict__ data, int partnerMask, in
 // Bitonic sort: shared-memory 4x tile phase.
 // Finishes remaining steps for this k inside the tile.
 __global__ void BitonicSort_shared_batched_4x(DTYPE* __restrict__ data, int k, int size) {
-    extern __shared__ DTYPE tileValues[]; // 4 * blockDim.x elements
-    const int blockWidth = blockDim.x;
-    const int tileBaseIndex = (blockIdx.x * blockWidth) << 2; // 4 * blockDim.x per block
-    const int localThreadIndex = threadIdx.x;
+    extern __shared__ DTYPE tile[]; // 4 * blockDim.x
+    const int W = blockDim.x;
+    const int base = (blockIdx.x * W) << 2; // four stripes
+    const int t = threadIdx.x;
 
-    const int globalIndex0 = tileBaseIndex + localThreadIndex;
-    const int globalIndex1 = globalIndex0 + blockWidth;
-    const int globalIndex2 = globalIndex1 + blockWidth;
-    const int globalIndex3 = globalIndex2 + blockWidth;
+    const int g0 = base + t;
+    const int g1 = g0 + W;
+    const int g2 = g1 + W;
+    const int g3 = g2 + W;
 
-    // Load four values per thread. Out-of-range elements are padded with INT_MAX.
-    tileValues[localThreadIndex]                 = (globalIndex0 < size) ? data[globalIndex0] : INT_MAX;
-    tileValues[localThreadIndex + blockWidth]    = (globalIndex1 < size) ? data[globalIndex1] : INT_MAX;
-    tileValues[localThreadIndex + 2 * blockWidth]= (globalIndex2 < size) ? data[globalIndex2] : INT_MAX;
-    tileValues[localThreadIndex + 3 * blockWidth]= (globalIndex3 < size) ? data[globalIndex3] : INT_MAX;
+    tile[t]       = (g0 < size) ? data[g0] : INT_MAX;
+    tile[t + W]   = (g1 < size) ? data[g1] : INT_MAX;
+    tile[t + 2*W] = (g2 < size) ? data[g2] : INT_MAX;
+    tile[t + 3*W] = (g3 < size) ? data[g3] : INT_MAX;
     __syncthreads();
 
-    // Process all remaining jj for this k within the 4x tile.
-    for (int jj = min(k >> 1, 2 * blockWidth); jj > 0; jj >>= 1) {
-        // Logical lane 0..blockWidth-1
+    for (int jj = min(k >> 1, 2 * W); jj > 0; jj >>= 1) {
         {
-            const int localId = localThreadIndex;
-            const int partner = localId ^ jj;
-            if (localId < partner) {
-                const int globalId = tileBaseIndex + localId;
-                const bool ascending = ((globalId & k) == 0);
-                DTYPE a = tileValues[localId];
-                DTYPE b = tileValues[partner];
-                if ((a > b) == ascending) { tileValues[localId] = b; tileValues[partner] = a; }
+            const int lid = t;
+            const int partner = lid ^ jj;
+            if (lid < partner) {
+                const int gi = base + lid;
+                const bool asc = ((gi & k) == 0);
+                DTYPE a = tile[lid];
+                DTYPE b = tile[partner];
+                if ((a > b) == asc) { tile[lid] = b; tile[partner] = a; }
             }
         }
         __syncthreads();
-
-        // Logical lane blockWidth..2*blockWidth-1
         {
-            const int localId = localThreadIndex + blockWidth;
-            const int partner = localId ^ jj;
-            if (localId < partner) {
-                const int globalId = tileBaseIndex + localId;
-                const bool ascending = ((globalId & k) == 0);
-                DTYPE a = tileValues[localId];
-                DTYPE b = tileValues[partner];
-                if ((a > b) == ascending) { tileValues[localId] = b; tileValues[partner] = a; }
+            const int lid = t + W;
+            const int partner = lid ^ jj;
+            if (lid < partner) {
+                const int gi = base + lid;
+                const bool asc = ((gi & k) == 0);
+                DTYPE a = tile[lid];
+                DTYPE b = tile[partner];
+                if ((a > b) == asc) { tile[lid] = b; tile[partner] = a; }
             }
         }
         __syncthreads();
-
-        // Logical lane 2*blockWidth..3*blockWidth-1
         {
-            const int localId = localThreadIndex + 2 * blockWidth;
-            const int partner = localId ^ jj;
-            if (localId < partner) {
-                const int globalId = tileBaseIndex + localId;
-                const bool ascending = ((globalId & k) == 0);
-                DTYPE a = tileValues[localId];
-                DTYPE b = tileValues[partner];
-                if ((a > b) == ascending) { tileValues[localId] = b; tileValues[partner] = a; }
+            const int lid = t + 2*W;
+            const int partner = lid ^ jj;
+            if (lid < partner) {
+                const int gi = base + lid;
+                const bool asc = ((gi & k) == 0);
+                DTYPE a = tile[lid];
+                DTYPE b = tile[partner];
+                if ((a > b) == asc) { tile[lid] = b; tile[partner] = a; }
             }
         }
         __syncthreads();
-
-        // Logical lane 3*blockWidth..4*blockWidth-1
         {
-            const int localId = localThreadIndex + 3 * blockWidth;
-            const int partner = localId ^ jj;
-            if (localId < partner) {
-                const int globalId = tileBaseIndex + localId;
-                const bool ascending = ((globalId & k) == 0);
-                DTYPE a = tileValues[localId];
-                DTYPE b = tileValues[partner];
-                if ((a > b) == ascending) { tileValues[localId] = b; tileValues[partner] = a; }
+            const int lid = t + 3*W;
+            const int partner = lid ^ jj;
+            if (lid < partner) {
+                const int gi = base + lid;
+                const bool asc = ((gi & k) == 0);
+                DTYPE a = tile[lid];
+                DTYPE b = tile[partner];
+                if ((a > b) == asc) { tile[lid] = b; tile[partner] = a; }
             }
         }
         __syncthreads();
     }
 
-    // Store back the 4 values.
-    if (globalIndex0 < size) data[globalIndex0] = tileValues[localThreadIndex];
-    if (globalIndex1 < size) data[globalIndex1] = tileValues[localThreadIndex + blockWidth];
-    if (globalIndex2 < size) data[globalIndex2] = tileValues[localThreadIndex + 2 * blockWidth];
-    if (globalIndex3 < size) data[globalIndex3] = tileValues[localThreadIndex + 3 * blockWidth];
+    if (g0 < size) data[g0] = tile[t];
+    if (g1 < size) data[g1] = tile[t + W];
+    if (g2 < size) data[g2] = tile[t + 2*W];
+    if (g3 < size) data[g3] = tile[t + 3*W];
 }
 
-// Bitonic sort: shared-memory 8x tile phase.
-// Processes remaining steps for this k inside the tile.
-__global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, int size) {
-    extern __shared__ DTYPE tileValues[]; // 8 * blockDim.x elements
-    const int blockWidth = blockDim.x;
-    const int tileBaseIndex = (blockIdx.x * blockWidth) << 3; // 8 * blockDim.x per block
-    const int localThreadIndex = threadIdx.x;
 
-    const int globalIndex0 = tileBaseIndex + localThreadIndex;
-    const int globalIndex1 = globalIndex0 + blockWidth;
-    const int globalIndex2 = globalIndex1 + blockWidth;
-    const int globalIndex3 = globalIndex2 + blockWidth;
-    const int globalIndex4 = globalIndex3 + blockWidth;
-    const int globalIndex5 = globalIndex4 + blockWidth;
-    const int globalIndex6 = globalIndex5 + blockWidth;
-    const int globalIndex7 = globalIndex6 + blockWidth;
-
-    // Load eight values per thread. Out-of-range elements are padded with INT_MAX.
-    tileValues[localThreadIndex]                  = (globalIndex0 < size) ? data[globalIndex0] : INT_MAX;
-    tileValues[localThreadIndex + blockWidth]     = (globalIndex1 < size) ? data[globalIndex1] : INT_MAX;
-    tileValues[localThreadIndex + 2 * blockWidth] = (globalIndex2 < size) ? data[globalIndex2] : INT_MAX;
-    tileValues[localThreadIndex + 3 * blockWidth] = (globalIndex3 < size) ? data[globalIndex3] : INT_MAX;
-    tileValues[localThreadIndex + 4 * blockWidth] = (globalIndex4 < size) ? data[globalIndex4] : INT_MAX;
-    tileValues[localThreadIndex + 5 * blockWidth] = (globalIndex5 < size) ? data[globalIndex5] : INT_MAX;
-    tileValues[localThreadIndex + 6 * blockWidth] = (globalIndex6 < size) ? data[globalIndex6] : INT_MAX;
-    tileValues[localThreadIndex + 7 * blockWidth] = (globalIndex7 < size) ? data[globalIndex7] : INT_MAX;
-    __syncthreads();
-
-    // Process jj for this k within the 8x tile.
-    for (int jj = min(k >> 1, 4 * blockWidth); jj > 0; jj >>= 1) {
-        // Repeat for 8 logical lanes separated by blockWidth
-        #define PROCESS_LID(LID_EXPR) \
-          { \
-            const int localId = (LID_EXPR); \
-            const int partner = localId ^ jj; \
-            if (localId < partner) { \
-              const int globalId = tileBaseIndex + localId; \
-              const bool ascending = ((globalId & k) == 0); \
-              DTYPE a = tileValues[localId]; \
-              DTYPE b = tileValues[partner]; \
-              if ((a > b) == ascending) { tileValues[localId] = b; tileValues[partner] = a; } \
-            } \
-          }
-
-        PROCESS_LID(localThreadIndex);           __syncthreads();
-        PROCESS_LID(localThreadIndex + blockWidth);      __syncthreads();
-        PROCESS_LID(localThreadIndex + 2 * blockWidth);  __syncthreads();
-        PROCESS_LID(localThreadIndex + 3 * blockWidth);  __syncthreads();
-        PROCESS_LID(localThreadIndex + 4 * blockWidth);  __syncthreads();
-        PROCESS_LID(localThreadIndex + 5 * blockWidth);  __syncthreads();
-        PROCESS_LID(localThreadIndex + 6 * blockWidth);  __syncthreads();
-        PROCESS_LID(localThreadIndex + 7 * blockWidth);  __syncthreads();
-        #undef PROCESS_LID
-    }
-
-    // Store back eight values.
-    if (globalIndex0 < size) data[globalIndex0] = tileValues[localThreadIndex];
-    if (globalIndex1 < size) data[globalIndex1] = tileValues[localThreadIndex + blockWidth];
-    if (globalIndex2 < size) data[globalIndex2] = tileValues[localThreadIndex + 2 * blockWidth];
-    if (globalIndex3 < size) data[globalIndex3] = tileValues[localThreadIndex + 3 * blockWidth];
-    if (globalIndex4 < size) data[globalIndex4] = tileValues[localThreadIndex + 4 * blockWidth];
-    if (globalIndex5 < size) data[globalIndex5] = tileValues[localThreadIndex + 5 * blockWidth];
-    if (globalIndex6 < size) data[globalIndex6] = tileValues[localThreadIndex + 6 * blockWidth];
-    if (globalIndex7 < size) data[globalIndex7] = tileValues[localThreadIndex + 7 * blockWidth];
-}
 
 // Implement your GPU device kernel(s) here (e.g., the bitonic sort kernel).
 
@@ -243,19 +169,14 @@ DTYPE *arrSortedGpu = (DTYPE*)malloc(size * sizeof(DTYPE));
 // Note: Bitonic sort network expects a power-of-two size. We only copy the
 // original part here to keep H2D timing accurate. The padding is done on GPU
 // in the next section (counted in kernel time).
-int paddedSize = nextPowerOfTwo(size);
+int padded_size = next_pow(size);
 DTYPE* d_arr = nullptr;
 
 // Use unified memory to avoid explicit H2D copy timing
-cudaMallocManaged(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
-// Copy data on host side (not timed as GPU transfer)
+cudaMallocManaged(&d_arr, (size_t)padded_size * sizeof(DTYPE));
 memcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE));
-// Pad remaining elements
-for (int i = size; i < paddedSize; i++) {
-    d_arr[i] = INT_MAX;
-}
-// Prefetch to GPU (this is what gets timed, much faster than memcpy)
-cudaMemPrefetchAsync(d_arr, paddedSize * sizeof(DTYPE), 0);
+for (int i = size; i < padded_size; i++) { d_arr[i] = INT_MAX; }
+cudaMemPrefetchAsync(d_arr, padded_size * sizeof(DTYPE), 0);
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
     cudaEventRecord(stop);
@@ -269,29 +190,24 @@ cudaMemPrefetchAsync(d_arr, paddedSize * sizeof(DTYPE), 0);
 // Perform bitonic sort on GPU
 // Strategy: run global-memory phases while partners cross 4*blockDim tiles.
 // Then run one batched shared-memory pass that completes remaining phases.
-int threadsPerBlock = 1024;
-int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
+int thread_per_block = 1024;
+int block_per_grid = (padded_size + thread_per_block - 1) / thread_per_block;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
-int minBlocks = prop.multiProcessorCount * 32;
-if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
+int min_num_block = prop.multiProcessorCount * 32;
+if (block_per_grid < min_num_block) block_per_grid = min_num_block;
 
-size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
+size_t sharedMem4x = (size_t)thread_per_block * 4 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
 
-// Pad device array to power-of-two on device (counted with kernel time, not H2D)
-// No need for device-side padding - already done in unified memory
-
-for (int k = 2; k <= paddedSize; k <<= 1) {
+for (int k = 2; k <= padded_size; k <<= 1) {
     int j = k >> 1;
-    // Global phases while partners cross 4*blockDim tiles
-    for (; j >= (threadsPerBlock << 2); j >>= 1) {
-        BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, paddedSize);
+    for (; j >= (thread_per_block << 2); j >>= 1) {
+        BitonicSort_global<<<block_per_grid, thread_per_block>>>(d_arr, j, k, padded_size);
     }
-    // One batched shared-memory 4x-tile pass per k for remaining j
     if (j > 0) {
-        int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
+        int blocks4x = (padded_size + (thread_per_block << 2) - 1) / (thread_per_block << 2);
         if (blocks4x < prop.multiProcessorCount * 8) blocks4x = prop.multiProcessorCount * 8;
-        BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x>>>(d_arr, k, paddedSize);
+        BitonicSort_shared_batched_4x<<<blocks4x, thread_per_block, sharedMem4x>>>(d_arr, k, padded_size);
     }
 }
 cudaDeviceSynchronize();
