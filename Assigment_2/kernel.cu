@@ -54,29 +54,7 @@ __global__ void BitonicSort_global(DTYPE* __restrict__ data, int j, int k, int s
     }
 }
 
-// Global-memory multi-phase kernel: processes all j in [j_min, j_max] for a given k
-__launch_bounds__(1024, 2)
-__global__ void BitonicSort_global_multi(DTYPE* __restrict__ data, int j_max, int j_min, int k, int size) {
-    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    const int stride = blockDim.x * gridDim.x;
-    for (int j = j_max; j >= j_min; j >>= 1) {
-        #pragma unroll 2
-        for (int i = tid; i < size; i += stride) {
-            const int partner = i ^ j;
-            if (i < partner && partner < size) {
-                const bool ascending = ((i & k) == 0);
-                DTYPE a = data[i];
-                DTYPE b = data[partner];
-                if ((a > b) == ascending) {
-                    data[i] = b;
-                    data[partner] = a;
-                }
-            }
-        }
-        __syncthreads();
-    }
-}
-
+// removed multi-phase kernel
 // Batched shared-memory phase processing a 4x block tile.
 // It executes all remaining j < 4*blockDim.x steps for a given k.
 __launch_bounds__(1024, 2)
@@ -362,13 +340,7 @@ cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
  */
 for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
-    // Global phases while partners cross 2*blockDim tiles (group launches to reduce overhead)
-    for (; j >= (threadsPerBlock << 3); ) {
-        int j_max = j;
-        int j_min = max(threadsPerBlock << 1, j >> 3); // process up to 3 phases per launch
-        BitonicSort_global_multi<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j_max, j_min, k, paddedSize);
-        j = j_min >> 1;
-    }
+    // Global phases while partners cross 2*blockDim tiles
     for (; j >= (threadsPerBlock << 1); j >>= 1) {
         BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
     }
