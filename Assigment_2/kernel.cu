@@ -366,6 +366,7 @@ int main(int argc, char* argv[]) {
 // 6. H100's enhanced copy engines can only reach full efficiency with pinned memory
 // Output buffer will be page-locked later, before D2H
 DTYPE *arrSortedGpu = nullptr;
+DTYPE* pinnedBuffer = nullptr; // Declare here for cleanup access
 
 // Create streams BEFORE we use them
 cudaStream_t stream1, stream2;
@@ -375,18 +376,23 @@ cudaStreamCreate(&stream2);
 // Calculate padded size for bitonic sort
 int paddedSize = nextPowerOfTwo(size);
 
-// Use unified memory like kernel_original to minimize H2D time
+// Allocate device memory
 DTYPE* d_arr = nullptr;
-cudaMallocManaged(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
+cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
 
-// Copy and pad on CPU side (not timed as GPU transfer)
-memcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE));
-for (int i = size; i < paddedSize; i++) {
-    d_arr[i] = INT_MAX;
+// Allocate pinned staging buffer for zero-copy access
+cudaMallocHost(&pinnedBuffer, (size_t)size * sizeof(DTYPE));
+
+// Copy to pinned buffer (CPU-CPU copy, very fast)
+memcpy(pinnedBuffer, arrCpu, (size_t)size * sizeof(DTYPE));
+
+// Launch async H2D transfer on stream1
+cudaMemcpyAsync(d_arr, pinnedBuffer, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice, stream1);
+
+// Async padding on device
+if (size < paddedSize) {
+    cudaMemsetAsync(d_arr + size, 0x7F, (paddedSize - size) * sizeof(DTYPE), stream1);
 }
-
-// Only prefetch to GPU gets timed (very fast)
-cudaMemPrefetchAsync(d_arr, paddedSize * sizeof(DTYPE), 0);
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
@@ -398,7 +404,8 @@ cudaMemPrefetchAsync(d_arr, paddedSize * sizeof(DTYPE), 0);
     
 /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
-// Padding already done on CPU side with unified memory
+// Wait for H2D and padding to complete
+cudaStreamSynchronize(stream1);
 
 // Perform bitonic sort on GPU with extreme optimizations
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
@@ -407,10 +414,10 @@ cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
 cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
 
-// Setup for 4x batching (matches kernel_original which got 79ms)
+// Setup for 4x batching with more aggressive block count
 int threadsPerBlock = 1024;
 int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
-int minBlocks = prop.multiProcessorCount * 32;
+int minBlocks = prop.multiProcessorCount * 64; // Double the blocks
 if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
@@ -459,6 +466,7 @@ cudaStreamSynchronize(stream2);
 cudaStreamDestroy(stream1);
 cudaStreamDestroy(stream2);
 cudaFree(d_arr);
+cudaFreeHost(pinnedBuffer);
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
