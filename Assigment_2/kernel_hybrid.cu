@@ -6,7 +6,10 @@
 #include <algorithm>
 #include <limits.h>
 
+// ==== DO NOT MODIFY CODE ABOVE THIS LINE ====
+
 #define DTYPE int
+// Add any additional #include headers or helper macros needed
 
 // Return true if n is a power of two (n > 0)
 static inline bool isPowerOfTwo(int n) {
@@ -198,6 +201,7 @@ __global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, i
     if (globalIndex6 < size) data[globalIndex6] = tileValues[localThreadIndex + 6 * blockWidth];
     if (globalIndex7 < size) data[globalIndex7] = tileValues[localThreadIndex + 7 * blockWidth];
 }
+/* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         printf("Usage: %s <array_size>\n", argv[0]);
@@ -207,14 +211,35 @@ int main(int argc, char* argv[]) {
     int size = atoi(argv[1]);
     int paddedSize = nextPowerOfTwo(size);
 
+    srand(time(NULL));
+
+    // Allocate input array (template default)
+    DTYPE* arrCpu = (DTYPE*)malloc(size * sizeof(DTYPE));
+
+    for (int i = 0; i < size; i++) {
+        arrCpu[i] = rand() % 1000;
+    }
+
+    float gpuTime, h2dTime, d2hTime, cpuTime = 0;
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start);
+/* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
+
+// arCpu contains the input random array
+// arrSortedGpu should contain the sorted array copied from GPU to CPU
+
     // Host buffers: pinned + write-combined for fastest H2D (H2D only)
     DTYPE* h_in = nullptr;
     DTYPE* h_out = nullptr;
     cudaHostAlloc((void**)&h_in,  (size_t)size * sizeof(DTYPE), cudaHostAllocWriteCombined | cudaHostAllocPortable);
     cudaHostAlloc((void**)&h_out, (size_t)size * sizeof(DTYPE), cudaHostAllocPortable);
 
-    srand((unsigned)time(NULL));
-    for (int i = 0; i < size; i++) h_in[i] = rand() % 1000;
+    // copy CPU buffer into pinned input for timing purity
+    memcpy(h_in, arrCpu, (size_t)size * sizeof(DTYPE));
 
     // Device: use cudaMalloc for maximum DMA bandwidth
     DTYPE* d_arr = nullptr;
@@ -239,6 +264,15 @@ int main(int argc, char* argv[]) {
     int blocks = (paddedSize + threads - 1) / threads;
     PadWithMax<<<blocks, threads, 0, sH2D>>>(d_arr, size, paddedSize);
     cudaEventRecord(eH2DStop, sH2D);
+
+/* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&h2dTime, start, stop);
+
+    cudaEventRecord(start);
+    
+/* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
     // Sort on separate stream, wait on H2D completion via event
     cudaStreamWaitEvent(sKernel, eH2DStop, 0);
@@ -267,6 +301,14 @@ int main(int argc, char* argv[]) {
         }
     }
     cudaEventRecord(eKStop, sKernel);
+/* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&gpuTime, start, stop);
+
+    cudaEventRecord(start);
+
+/* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
     // D2H: wait on kernel completion, then copy back
     cudaStreamWaitEvent(sD2H, eKStop, 0);
@@ -285,7 +327,33 @@ int main(int argc, char* argv[]) {
     cudaEventElapsedTime(&kMs,   eKStart,   eKStop);
     cudaEventElapsedTime(&d2hMs, eD2HStart, eD2HStop);
 
-    // Verify vs CPU
+/* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&d2hTime, start, stop);
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+    
+    // CPU sort for performance comparison
+    std::sort(arrCpu, arrCpu + size);
+    
+    auto endTime = std::chrono::high_resolution_clock::now();
+    cpuTime = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+    cpuTime = cpuTime / 1000;
+
+    int match = 1;
+    for (int i = 0; i < size; i++) {
+        if (h_out[i] != arrCpu[i]) {
+            match = 0;
+            break;
+        }
+    }
+
+    free(arrCpu);
+
+/* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
+
+    // Verify vs CPU (local detailed metrics)
     DTYPE* h_ref = (DTYPE*)malloc(size * sizeof(DTYPE));
     memcpy(h_ref, h_in, (size_t)size * sizeof(DTYPE));
     auto t0 = std::chrono::high_resolution_clock::now();
@@ -308,8 +376,35 @@ int main(int argc, char* argv[]) {
     printf("\033[1;34mGPU Sort Time (ms) :\033[0m %f\n", gpuTotalTime);
     printf("\033[1;34mGPU Sort Speed     :\033[0m %f million elements per second\n", meps);
 
-    if (ok) printf("\033[1;32mFUNCTIONAL SUCCESS\n\033[0m");
-    else    printf("\033[1;31mFUNCTIONCAL FAIL\n\033[0m");
+/* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
+    if (match)
+        printf("\033[1;32mFUNCTIONAL SUCCESS\n\033[0m");
+    else {
+        printf("\033[1;31mFUNCTIONCAL FAIL\n\033[0m");
+        return 0;
+    }
+    
+    printf("\033[1;34mArray size         :\033[0m %d\n", size);
+    printf("\033[1;34mCPU Sort Time (ms) :\033[0m %f\n", cpuTime);
+    int speedup = (gpuTotalTime > cpuTime) ? (gpuTotalTime/cpuTime) : (cpuTime/gpuTotalTime);
+    printf("\033[1;34mGPU Sort Time (ms) :\033[0m %f\n", gpuTotalTime);
+    printf("\033[1;34mGPU Sort Speed     :\033[0m %f million elements per second\n", meps);
+    if (gpuTotalTime < cpuTime) {
+        printf("\033[1;32mPERF PASSING\n\033[0m");
+        printf("\033[1;34mH2D Transfer Time (ms):\033[0m %f\n", h2dTime);
+        printf("\033[1;34mKernel Time (ms)      :\033[0m %f\n", gpuTime);
+        printf("\033[1;34mD2H Transfer Time (ms):\033[0m %f\n", d2hTime);
+    } else {
+        printf("\033[1;31mPERF FAILING\n\033[0m");
+        printf("\033[1;34mGPU Sort is \033[1;31m%dx \033[1;34mslower than CPU, optimize further!\n", speedup);
+        printf("\033[1;34mH2D Transfer Time (ms):\033[0m %f\n", h2dTime);
+        printf("\033[1;34mKernel Time (ms)      :\033[0m %f\n", gpuTime);
+        printf("\033[1;34mD2H Transfer Time (ms):\033[0m %f\n", d2hTime);
+        return 0;
+    }
+
+    return 0;
+/* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
     // Cleanup
     cudaFree(d_arr);
