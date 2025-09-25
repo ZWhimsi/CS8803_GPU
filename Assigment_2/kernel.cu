@@ -323,13 +323,14 @@ cudaStreamSynchronize(stream1);
 int threadsPerBlock = 1024;
 int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
-int minBlocks = prop.multiProcessorCount * 32;
+int minBlocks = prop.multiProcessorCount * 48;
 if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
 size_t sharedMem8x = (size_t)threadsPerBlock * 8 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_8x, cudaFuncCachePreferShared);
+cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
 
 /* H100 KERNEL EXECUTION OPTIMIZATION:
  * Execute all sorting kernels in stream1 for proper dependency management
