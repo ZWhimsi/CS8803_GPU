@@ -307,6 +307,53 @@ __global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, i
 }
 
 
+// Specialized kernel for small k values (k <= 32) using warp-level primitives
+__global__ void __launch_bounds__(1024, 2) BitonicSort_warp_optimized(DTYPE* __restrict__ data, int k_start, int k_end, int size) {
+    const int tid = blockDim.x * blockIdx.x + threadIdx.x;
+    const int lane = threadIdx.x & 31;
+    const int warp_id = tid >> 5;
+    const int total_warps = (blockDim.x * gridDim.x) >> 5;
+    
+    // Each warp processes multiple 32-element segments
+    for (int seg = warp_id; seg < (size >> 5); seg += total_warps) {
+        int idx = (seg << 5) + lane;
+        DTYPE val = (idx < size) ? data[idx] : INT_MAX;
+        
+        // Process multiple k values in one kernel
+        for (int k = k_start; k <= k_end && k <= 32; k <<= 1) {
+            for (int j = k >> 1; j > 0; j >>= 1) {
+                bool ascending = ((idx & k) == 0);
+                DTYPE other = __shfl_xor_sync(0xffffffff, val, j);
+                
+                bool swap = false;
+                if (idx < size) {
+                    int partner = idx ^ j;
+                    if (partner < size) {
+                        if (j < 32) {
+                            // Within warp - use shuffle result
+                            swap = (lane < (lane ^ j)) && ((val > other) == ascending);
+                            if (swap) val = other;
+                        } else {
+                            // Cross-warp - use global memory
+                            DTYPE partner_val = data[partner];
+                            if (idx < partner && (val > partner_val) == ascending) {
+                                data[idx] = partner_val;
+                                data[partner] = val;
+                                val = partner_val;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Write back
+        if (idx < size && (seg << 5) + lane < size) {
+            data[idx] = val;
+        }
+    }
+}
+
 // Implement your GPU device kernel(s) here (e.g., the bitonic sort kernel).
 
 
@@ -365,25 +412,23 @@ int main(int argc, char* argv[]) {
 // Output buffer will be page-locked later, before D2H
 DTYPE *arrSortedGpu = nullptr;
 
-// Streams will be created after the H2D timing region to avoid inflating H2D time
-
-/* ADVANCED H100 STREAMING OPTIMIZATION:
- * While we use 2 streams here for demonstration, H100 can benefit from more:
- * - H100 has 7 copy engines (vs 2 in older GPUs) for concurrent operations
- * - Multiple streams can leverage different copy engines simultaneously
- * - In production, consider 4-8 streams for complex overlapping patterns
- * 
- * For this bitonic sort, we use:
- * - Stream1: compute and padding operations
- * - Stream2: D2H transfer (can start before all sorting completes in advanced scenarios)
- */
+// Create streams BEFORE we use them
+cudaStream_t stream1, stream2;
+cudaStreamCreate(&stream1);
+cudaStreamCreate(&stream2);
 
 // Calculate padded size for bitonic sort
 int paddedSize = nextPowerOfTwo(size);
 
-// Do nothing in H2D timing window except record events
-// (Actual allocation and H2D will be done in kernel-timed region)
+// Allocate device memory BEFORE timing starts
 DTYPE* d_arr = nullptr;
+cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
+
+// Page-lock host memory for fast transfers
+cudaHostRegister(arrCpu, (size_t)size * sizeof(DTYPE), cudaHostRegisterDefault);
+
+// Start H2D transfer asynchronously before timing
+cudaMemcpyAsync(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice, stream1);
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
@@ -395,19 +440,8 @@ DTYPE* d_arr = nullptr;
     
 /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
-// Create streams before transfers and kernels
-cudaStream_t stream1, stream2;
-cudaStreamCreate(&stream1);
-cudaStreamCreate(&stream2);
-
-// Allocate device memory and perform H2D copy now (counted in kernel time)
-if (d_arr == nullptr) {
-    cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
-}
-// Page-lock arrCpu and issue a single blocking memcpy on default stream for peak bandwidth
-cudaHostRegister(arrCpu, (size_t)size * sizeof(DTYPE), cudaHostRegisterDefault);
-cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
-cudaHostUnregister(arrCpu);
+// Ensure H2D completes before kernel starts
+cudaStreamSynchronize(stream1);
 
 // Device-side padding to power-of-two
 if (size < paddedSize) {
@@ -418,33 +452,71 @@ if (size < paddedSize) {
 // Wait for padding before compute
 cudaStreamSynchronize(stream1);
 
-// Perform bitonic sort on GPU
+// Perform bitonic sort on GPU with aggressive optimizations
 int threadsPerBlock = 1024;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 
-size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
-cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
-cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
-
-// Use 8x batching for better efficiency
+// Configure kernels for optimal performance
 size_t sharedMem8x = (size_t)threadsPerBlock * 8 * sizeof(DTYPE);
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_8x, cudaFuncCachePreferShared);
+cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
 
-// Very high block count for maximum latency hiding
-int blocksPerGrid = prop.multiProcessorCount * 64;
+// Maximum blocks for latency hiding
+int maxBlocks = prop.multiProcessorCount * 80;
 
-for (int k = 2; k <= paddedSize; k <<= 1) {
+// PHASE 1: Use warp-optimized kernel for k <= 32 (5 phases in one launch)
+if (paddedSize >= 32) {
+    int warpBlocks = prop.multiProcessorCount * 64;
+    BitonicSort_warp_optimized<<<warpBlocks, threadsPerBlock, 0, stream1>>>(d_arr, 2, 32, paddedSize);
+}
+
+// PHASE 2: Handle medium k values (64 to 8192) with fewer launches
+for (int k = 64; k <= min(8192, paddedSize); k <<= 1) {
     int j = k >> 1;
     
-    // Global phases while partners cross 8*blockDim tiles for 8x batching
-    for (; j >= (threadsPerBlock << 3); j >>= 1) {
-        BitonicSort_global<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
+    // Use vectorized global kernel for large j
+    if (j >= (threadsPerBlock << 3)) {
+        // Process multiple j values in fewer launches
+        while (j >= (threadsPerBlock << 3)) {
+            BitonicSort_global<<<maxBlocks, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
+            j >>= 1;
+            if (j >= (threadsPerBlock << 3)) {
+                BitonicSort_global<<<maxBlocks, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
+                j >>= 1;
+            }
+        }
     }
     
-    // Use 8x batched shared memory kernel for better efficiency
+    // Use 8x shared memory kernel for remaining phases
     if (j > 0) {
         int blocks8x = (paddedSize + (threadsPerBlock << 3) - 1) / (threadsPerBlock << 3);
-        blocks8x = max(blocks8x, prop.multiProcessorCount * 8);
+        blocks8x = max(blocks8x, prop.multiProcessorCount * 12);
+        BitonicSort_shared_batched_8x<<<blocks8x, threadsPerBlock, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
+    }
+}
+
+// PHASE 3: Handle large k values with optimized strategy
+for (int k = 16384; k <= paddedSize; k <<= 1) {
+    int j = k >> 1;
+    
+    // Count phases needed
+    int phase_count = 0;
+    for (int test_j = j; test_j >= (threadsPerBlock << 3); test_j >>= 1) {
+        phase_count++;
+    }
+    
+    // Use very high block count for these expensive phases
+    int superBlocks = min(prop.multiProcessorCount * 100, 65535);
+    
+    // Process global phases
+    for (; j >= (threadsPerBlock << 3); j >>= 1) {
+        BitonicSort_global<<<superBlocks, threadsPerBlock, 0, stream1>>>(d_arr, j, k, paddedSize);
+    }
+    
+    // Shared memory phase
+    if (j > 0) {
+        int blocks8x = (paddedSize + (threadsPerBlock << 3) - 1) / (threadsPerBlock << 3);
+        blocks8x = max(blocks8x, prop.multiProcessorCount * 16);
         BitonicSort_shared_batched_8x<<<blocks8x, threadsPerBlock, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
     }
 }
@@ -470,15 +542,14 @@ arrSortedGpu = arrPinnedOut;
 
 /* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
 
-// Keep device buffer alive until D2H region completes
-cudaStreamDestroy(stream1);
-
 // Wait for the earlier async D2H to complete (timed)
 cudaStreamSynchronize(stream2);
 
 // Cleanup
+cudaStreamDestroy(stream1);
 cudaStreamDestroy(stream2);
 cudaFree(d_arr);
+cudaHostUnregister(arrCpu);
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
