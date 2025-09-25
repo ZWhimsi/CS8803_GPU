@@ -308,44 +308,87 @@ __global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, i
 
 
 
-// Ultra-optimized kernel that processes multiple elements per thread
-__global__ void __launch_bounds__(256, 8) BitonicSort_coalesced_multi(
+// Process multiple j phases in one kernel to reduce launches
+__global__ void __launch_bounds__(128, 16) BitonicSort_multi_j(
     DTYPE* __restrict__ data, 
-    int j, 
-    int k, 
-    int size,
-    int elements_per_thread) {
+    int k,
+    int j_start,
+    int j_end,
+    int size) {
     
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    const int total_threads = blockDim.x * gridDim.x;
-    const int chunk_size = elements_per_thread;
+    const int stride = blockDim.x * gridDim.x;
     
-    // Process multiple elements per thread for better memory coalescing
-    for (int base = tid * chunk_size; base < size; base += total_threads * chunk_size) {
-        // Prefetch data into registers
-        DTYPE vals[8];
-        #pragma unroll
-        for (int i = 0; i < chunk_size && base + i < size; i++) {
-            vals[i] = data[base + i];
-        }
-        
-        // Process each element
-        #pragma unroll
-        for (int i = 0; i < chunk_size && base + i < size; i++) {
-            int idx = base + i;
-            int partner = idx ^ j;
-            
-            if (idx < partner && partner < size) {
-                bool ascending = ((idx & k) == 0);
-                DTYPE partner_val = data[partner];
-                
-                if ((vals[i] > partner_val) == ascending) {
-                    // Write both values in coalesced manner
-                    data[idx] = partner_val;
-                    data[partner] = vals[i];
+    // Process multiple j values in single kernel
+    for (int j = j_start; j >= j_end; j >>= 1) {
+        // Vectorized path when possible
+        if (j >= 4 && (tid * 4) < size) {
+            for (int base_i = tid * 4; base_i < size; base_i += stride * 4) {
+                // Load 4 values
+                int4 indices = make_int4(base_i, base_i + 1, base_i + 2, base_i + 3);
+                if (indices.w < size) {
+                    int4 vals = *reinterpret_cast<const int4*>(&data[base_i]);
+                    bool modified = false;
+                    
+                    // Process each value
+                    if (indices.x < (indices.x ^ j) && (indices.x ^ j) < size) {
+                        bool asc = ((indices.x & k) == 0);
+                        int pval = data[indices.x ^ j];
+                        if ((vals.x > pval) == asc) {
+                            data[indices.x ^ j] = vals.x;
+                            vals.x = pval;
+                            modified = true;
+                        }
+                    }
+                    if (indices.y < (indices.y ^ j) && (indices.y ^ j) < size) {
+                        bool asc = ((indices.y & k) == 0);
+                        int pval = data[indices.y ^ j];
+                        if ((vals.y > pval) == asc) {
+                            data[indices.y ^ j] = vals.y;
+                            vals.y = pval;
+                            modified = true;
+                        }
+                    }
+                    if (indices.z < (indices.z ^ j) && (indices.z ^ j) < size) {
+                        bool asc = ((indices.z & k) == 0);
+                        int pval = data[indices.z ^ j];
+                        if ((vals.z > pval) == asc) {
+                            data[indices.z ^ j] = vals.z;
+                            vals.z = pval;
+                            modified = true;
+                        }
+                    }
+                    if (indices.w < (indices.w ^ j) && (indices.w ^ j) < size) {
+                        bool asc = ((indices.w & k) == 0);
+                        int pval = data[indices.w ^ j];
+                        if ((vals.w > pval) == asc) {
+                            data[indices.w ^ j] = vals.w;
+                            vals.w = pval;
+                            modified = true;
+                        }
+                    }
+                    
+                    if (modified) {
+                        *reinterpret_cast<int4*>(&data[base_i]) = vals;
+                    }
+                }
+            }
+        } else {
+            // Scalar path
+            for (int i = tid; i < size; i += stride) {
+                int partner = i ^ j;
+                if (i < partner && partner < size) {
+                    bool ascending = ((i & k) == 0);
+                    DTYPE a = data[i];
+                    DTYPE b = data[partner];
+                    if ((a > b) == ascending) {
+                        data[i] = b;
+                        data[partner] = a;
+                    }
                 }
             }
         }
+        __syncthreads(); // Ensure all threads complete this j
     }
 }
 
@@ -422,11 +465,8 @@ cudaMalloc(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
 // Page-lock host memory for fast transfers
 cudaHostRegister(arrCpu, (size_t)size * sizeof(DTYPE), cudaHostRegisterDefault);
 
-// Start H2D transfer asynchronously before timing
-cudaMemcpyAsync(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice, stream1);
-
-// Wait for H2D to complete before starting timer
-cudaStreamSynchronize(stream1);
+// Do synchronous H2D transfer before timing starts
+cudaMemcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE), cudaMemcpyHostToDevice);
 
 
 /* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
@@ -455,50 +495,50 @@ cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 // Configure all kernels for maximum performance
 cudaFuncSetCacheConfig(BitonicSort_shared_batched_8x, cudaFuncCachePreferShared);
 cudaFuncSetCacheConfig(BitonicSort_global, cudaFuncCachePreferL1);
-cudaFuncSetCacheConfig(BitonicSort_coalesced_multi, cudaFuncCachePreferL1);
+cudaFuncSetCacheConfig(BitonicSort_multi_j, cudaFuncCachePreferL1);
 
-// Early k phases (2-512) - Use shared memory exclusively
+// Use 16x batching for even fewer kernel launches
+size_t sharedMem16x = (size_t)1024 * 16 * sizeof(DTYPE);
 size_t sharedMem8x = (size_t)1024 * 8 * sizeof(DTYPE);
-int sharedBlocks = max((paddedSize + 8192 - 1) / 8192, prop.multiProcessorCount * 32);
 
-for (int k = 2; k <= min(512, paddedSize); k <<= 1) {
-    BitonicSort_shared_batched_8x<<<sharedBlocks, 1024, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
-}
+// Process with minimal kernel launches
+int superBlocks = min(65535, prop.multiProcessorCount * 1024);
 
-// Configure for large phases
-int elements_per_thread = 16; // Process more elements per thread
-int threadsPerBlock = 128; // Smaller blocks for better occupancy
-int maxBlocks = prop.multiProcessorCount * 512; // Extreme oversubscription
-
-// Process remaining k values with aggressive strategy
-for (int k = 1024; k <= paddedSize; k <<= 1) {
+for (int k = 2; k <= paddedSize; k <<= 1) {
     int j = k >> 1;
     
-    // For very large j values, batch multiple j iterations per kernel
-    if (j >= 32768) {
-        // Process 2 j values per kernel launch
-        while (j >= 32768) {
-            BitonicSort_coalesced_multi<<<maxBlocks, threadsPerBlock, 0, stream1>>>(
-                d_arr, j, k, paddedSize, elements_per_thread);
-            j >>= 1;
-            if (j >= 32768) {
-                // Same kernel processes next j value without returning
-                BitonicSort_coalesced_multi<<<maxBlocks, threadsPerBlock, 0, stream1>>>(
-                    d_arr, j, k, paddedSize, elements_per_thread);
-                j >>= 1;
-            }
-        }
+    // Count how many j phases we need
+    int j_count = 0;
+    int temp_j = j;
+    while (temp_j >= 8192) {
+        j_count++;
+        temp_j >>= 1;
     }
     
-    // Medium j values - use vectorized global with high blocks
-    int globalBlocks = min(65535, prop.multiProcessorCount * 256);
+    // For many j phases, use multi-j kernel to process multiple phases at once
+    if (j_count >= 8) {
+        // Process 8 j phases in one kernel
+        int j_end = j >> 7; // j / 128
+        if (j_end < 8192) j_end = 8192;
+        BitonicSort_multi_j<<<superBlocks, 128, 0, stream1>>>(d_arr, k, j, j_end, paddedSize);
+        j = j_end >> 1;
+    } else if (j_count >= 4) {
+        // Process 4 j phases in one kernel
+        int j_end = j >> 3; // j / 8
+        if (j_end < 8192) j_end = 8192;
+        BitonicSort_multi_j<<<superBlocks, 128, 0, stream1>>>(d_arr, k, j, j_end, paddedSize);
+        j = j_end >> 1;
+    }
+    
+    // Process remaining large j with vectorized global
     while (j >= 8192) {
-        BitonicSort_global<<<globalBlocks, 1024, 0, stream1>>>(d_arr, j, k, paddedSize);
+        BitonicSort_global<<<superBlocks, 1024, 0, stream1>>>(d_arr, j, k, paddedSize);
         j >>= 1;
     }
     
-    // Small j - back to shared memory
+    // Small j - use shared memory
     if (j > 0) {
+        int sharedBlocks = max((paddedSize + 8192 - 1) / 8192, prop.multiProcessorCount * 64);
         BitonicSort_shared_batched_8x<<<sharedBlocks, 1024, sharedMem8x, stream1>>>(d_arr, k, paddedSize);
     }
 }
