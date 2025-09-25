@@ -1,0 +1,350 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctime>
+#include <chrono>
+#include <cuda_runtime.h>
+#include <algorithm>
+// ==== DO NOT MODIFY CODE ABOVE THIS LINE ====
+
+#define DTYPE int
+// Add any additional #include headers or helper macros needed
+#include <limits.h>
+
+// Return true if n is a power of two (n > 0)
+static inline bool isPowerOfTwo(int n) {
+    return n > 0 && (n & (n - 1)) == 0;
+}
+
+// Return the next power of two >= n
+static inline int nextPowerOfTwo(int n) {
+    if (isPowerOfTwo(n)) return n;
+    int p = 1;
+    while (p < n) p <<= 1;
+    return p;
+}
+// Note for future-me: this padding kernel is intentionally boring.
+// We only care about making sure the bitonic network doesn't trip
+// on non-power-of-two sizes. Keep it obvious.
+__global__ void PadWithMax(DTYPE* data, int startIndex, int totalSize) {
+    const int globalThreadId = blockIdx.x * blockDim.x + threadIdx.x;
+    const int gridStride = blockDim.x * gridDim.x;
+    for (int dataIndex = startIndex + globalThreadId; dataIndex < totalSize; dataIndex += gridStride) {
+        data[dataIndex] = INT_MAX;
+    }
+}
+
+// Tiny device helper because I kept writing the same swap dance.
+// Yes, this costs a couple of registers, but it reads better.
+__device__ __forceinline__ void swapIf(bool doSwap, DTYPE &a, DTYPE &b) {
+    if (doSwap) {
+        DTYPE t = a; a = b; b = t;
+    }
+}
+
+// This is the straightforward global-memory phase.
+// Why not do everything in shared? Because partners can be far apart,
+// and letting the fabric move the data is fine here.
+__global__ void BitonicSort_global(DTYPE* __restrict__ data, int partnerMask, int stageMask, int totalSize) {
+    const int globalThreadIndex = blockDim.x * blockIdx.x + threadIdx.x;
+    const int gridStride = blockDim.x * gridDim.x;
+
+    #pragma unroll 2
+    for (int elementIndex = globalThreadIndex; elementIndex < totalSize; elementIndex += gridStride) {
+        const int partnerIndex = elementIndex ^ partnerMask;
+        if (elementIndex < partnerIndex && partnerIndex < totalSize) {
+            const bool ascending = ((elementIndex & stageMask) == 0);
+            DTYPE a = data[elementIndex];
+            DTYPE b = data[partnerIndex];
+            const bool shouldSwap = ((a > b) == ascending);
+            swapIf(shouldSwap, a, b);
+            if (shouldSwap) {
+                data[elementIndex] = a;
+                data[partnerIndex] = b;
+            }
+        }
+    }
+}
+
+// Shared 4x tile pass. This is the "finish the job" step for each k.
+// Rationale: keep the batched steps local to reduce global traffic.
+__global__ void BitonicSort_shared_batched_4x(DTYPE* __restrict__ data, int k, int size) {
+    extern __shared__ DTYPE tile[]; // 4 * blockDim.x
+    const int W = blockDim.x;
+    const int base = (blockIdx.x * W) << 2; // four stripes
+    const int t = threadIdx.x;
+
+    const int g0 = base + t;
+    const int g1 = g0 + W;
+    const int g2 = g1 + W;
+    const int g3 = g2 + W;
+
+    // Out-of-bounds -> INT_MAX so comparisons behave.
+    tile[t]       = (g0 < size) ? data[g0] : INT_MAX;
+    tile[t + W]   = (g1 < size) ? data[g1] : INT_MAX;
+    tile[t + 2*W] = (g2 < size) ? data[g2] : INT_MAX;
+    tile[t + 3*W] = (g3 < size) ? data[g3] : INT_MAX;
+    __syncthreads();
+
+    for (int jj = min(k >> 1, 2 * W); jj > 0; jj >>= 1) {
+        // stripe 0
+        {
+            const int lid = t;
+            const int partner = lid ^ jj;
+            if (lid < partner) {
+                const int gi = base + lid;
+                const bool asc = ((gi & k) == 0);
+                DTYPE a = tile[lid];
+                DTYPE b = tile[partner];
+                const bool s = ((a > b) == asc);
+                if (s) { tile[lid] = b; tile[partner] = a; }
+            }
+        }
+        __syncthreads();
+        // stripe 1
+        {
+            const int lid = t + W;
+            const int partner = lid ^ jj;
+            if (lid < partner) {
+                const int gi = base + lid;
+                const bool asc = ((gi & k) == 0);
+                DTYPE a = tile[lid];
+                DTYPE b = tile[partner];
+                const bool s = ((a > b) == asc);
+                if (s) { tile[lid] = b; tile[partner] = a; }
+            }
+        }
+        __syncthreads();
+        // stripe 2
+        {
+            const int lid = t + 2*W;
+            const int partner = lid ^ jj;
+            if (lid < partner) {
+                const int gi = base + lid;
+                const bool asc = ((gi & k) == 0);
+                DTYPE a = tile[lid];
+                DTYPE b = tile[partner];
+                const bool s = ((a > b) == asc);
+                if (s) { tile[lid] = b; tile[partner] = a; }
+            }
+        }
+        __syncthreads();
+        // stripe 3
+        {
+            const int lid = t + 3*W;
+            const int partner = lid ^ jj;
+            if (lid < partner) {
+                const int gi = base + lid;
+                const bool asc = ((gi & k) == 0);
+                DTYPE a = tile[lid];
+                DTYPE b = tile[partner];
+                const bool s = ((a > b) == asc);
+                if (s) { tile[lid] = b; tile[partner] = a; }
+            }
+        }
+        __syncthreads();
+    }
+
+    if (g0 < size) data[g0] = tile[t];
+    if (g1 < size) data[g1] = tile[t + W];
+    if (g2 < size) data[g2] = tile[t + 2*W];
+    if (g3 < size) data[g3] = tile[t + 3*W];
+}
+
+// 8x variant kept for completeness; not used in the main loop path by default.
+__global__ void BitonicSort_shared_batched_8x(DTYPE* __restrict__ data, int k, int size) {
+    extern __shared__ DTYPE s[]; // 8 * blockDim.x
+    const int bd = blockDim.x;
+    const int base = (blockIdx.x * bd) << 3;
+    const int t = threadIdx.x;
+
+    const int g0 = base + t;
+    const int g1 = g0 + bd;
+    const int g2 = g1 + bd;
+    const int g3 = g2 + bd;
+    const int g4 = g3 + bd;
+    const int g5 = g4 + bd;
+    const int g6 = g5 + bd;
+    const int g7 = g6 + bd;
+
+    s[t]          = (g0 < size) ? data[g0] : INT_MAX;
+    s[t + bd]     = (g1 < size) ? data[g1] : INT_MAX;
+    s[t + 2 * bd] = (g2 < size) ? data[g2] : INT_MAX;
+    s[t + 3 * bd] = (g3 < size) ? data[g3] : INT_MAX;
+    s[t + 4 * bd] = (g4 < size) ? data[g4] : INT_MAX;
+    s[t + 5 * bd] = (g5 < size) ? data[g5] : INT_MAX;
+    s[t + 6 * bd] = (g6 < size) ? data[g6] : INT_MAX;
+    s[t + 7 * bd] = (g7 < size) ? data[g7] : INT_MAX;
+    __syncthreads();
+
+    for (int jj = min(k >> 1, 4 * bd); jj > 0; jj >>= 1) {
+        #define PROCESS_LID(LID_EXPR) \
+          { \
+            const int lid = (LID_EXPR); \
+            const int partner = lid ^ jj; \
+            if (lid < partner) { \
+              const int gi = base + lid; \
+              const bool asc = ((gi & k) == 0); \
+              DTYPE a = s[lid]; \
+              DTYPE b = s[partner]; \
+              if ((a > b) == asc) { s[lid] = b; s[partner] = a; } \
+            } \
+          }
+
+        PROCESS_LID(t);           __syncthreads();
+        PROCESS_LID(t + bd);      __syncthreads();
+        PROCESS_LID(t + 2 * bd);  __syncthreads();
+        PROCESS_LID(t + 3 * bd);  __syncthreads();
+        PROCESS_LID(t + 4 * bd);  __syncthreads();
+        PROCESS_LID(t + 5 * bd);  __syncthreads();
+        PROCESS_LID(t + 6 * bd);  __syncthreads();
+        PROCESS_LID(t + 7 * bd);  __syncthreads();
+        #undef PROCESS_LID
+    }
+
+    if (g0 < size) data[g0] = s[t];
+    if (g1 < size) data[g1] = s[t + bd];
+    if (g2 < size) data[g2] = s[t + 2 * bd];
+    if (g3 < size) data[g3] = s[t + 3 * bd];
+    if (g4 < size) data[g4] = s[t + 4 * bd];
+    if (g5 < size) data[g5] = s[t + 5 * bd];
+    if (g6 < size) data[g6] = s[t + 6 * bd];
+    if (g7 < size) data[g7] = s[t + 7 * bd];
+}
+
+/* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        printf("Usage: %s <array_size>\n", argv[0]);
+        return 1;
+    }
+
+    int size = atoi(argv[1]);
+
+    srand(time(NULL));
+
+    DTYPE* arrCpu = (DTYPE*)malloc(size * sizeof(DTYPE));
+
+    for (int i = 0; i < size; i++) {
+        arrCpu[i] = rand() % 1000;
+    }
+
+    float gpuTime, h2dTime, d2hTime, cpuTime = 0;
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start);
+/* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
+
+// arCpu contains the input random array
+// arrSortedGpu should contain the sorted array copied from GPU to CPU
+DTYPE *arrSortedGpu = (DTYPE*)malloc(size * sizeof(DTYPE));
+
+int paddedSize = nextPowerOfTwo(size);
+DTYPE* d_arr = nullptr;
+
+cudaMallocManaged(&d_arr, (size_t)paddedSize * sizeof(DTYPE));
+memcpy(d_arr, arrCpu, (size_t)size * sizeof(DTYPE));
+for (int i = size; i < paddedSize; i++) { d_arr[i] = INT_MAX; }
+cudaMemPrefetchAsync(d_arr, paddedSize * sizeof(DTYPE), 0);
+
+/* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&h2dTime, start, stop);
+
+    cudaEventRecord(start);
+    
+/* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
+
+int threadsPerBlock = 1024;
+int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
+cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
+int minBlocks = prop.multiProcessorCount * 32;
+if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
+
+size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
+cudaFuncSetCacheConfig(BitonicSort_shared_batched_4x, cudaFuncCachePreferShared);
+
+for (int k = 2; k <= paddedSize; k <<= 1) {
+    int j = k >> 1;
+    for (; j >= (threadsPerBlock << 2); j >>= 1) {
+        BitonicSort_global<<<blocksPerGrid, threadsPerBlock>>>(d_arr, j, k, paddedSize);
+    }
+    if (j > 0) {
+        int blocks4x = (paddedSize + (threadsPerBlock << 2) - 1) / (threadsPerBlock << 2);
+        if (blocks4x < prop.multiProcessorCount * 8) blocks4x = prop.multiProcessorCount * 8;
+        BitonicSort_shared_batched_4x<<<blocks4x, threadsPerBlock, sharedMem4x>>>(d_arr, k, paddedSize);
+    }
+}
+cudaDeviceSynchronize();
+
+/* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&gpuTime, start, stop);
+
+    cudaEventRecord(start);
+
+/* ==== DO NOT MODIFY CODE ABOVE THIS LINE ==== */
+
+cudaMemcpy(arrSortedGpu, d_arr, (size_t)size * sizeof(DTYPE), cudaMemcpyDeviceToHost);
+cudaFree(d_arr);
+
+
+/* ==== DO NOT MODIFY CODE BELOW THIS LINE ==== */
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&d2hTime, start, stop);
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+    
+    // CPU sort for performance comparison
+    std::sort(arrCpu, arrCpu + size);
+    
+    auto endTime = std::chrono::high_resolution_clock::now();
+    cpuTime = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime).count();
+    cpuTime = cpuTime / 1000;
+
+    int match = 1;
+    for (int i = 0; i < size; i++) {
+        if (arrSortedGpu[i] != arrCpu[i]) {
+            match = 0;
+            break;
+        }
+    }
+
+    free(arrCpu);
+    free(arrSortedGpu);
+
+    if (match)
+        printf("\033[1;32mFUNCTIONAL SUCCESS\n\033[0m");
+    else {
+        printf("\033[1;31mFUNCTIONCAL FAIL\n\033[0m");
+        return 0;
+    }
+    
+    printf("\033[1;34mArray size         :\033[0m %d\n", size);
+    printf("\033[1;34mCPU Sort Time (ms) :\033[0m %f\n", cpuTime);
+    float gpuTotalTime = h2dTime + gpuTime + d2hTime;
+    int speedup = (gpuTotalTime > cpuTime) ? (gpuTotalTime/cpuTime) : (cpuTime/gpuTotalTime);
+    float meps = size / (gpuTotalTime * 0.001) / 1e6;
+    printf("\033[1;34mGPU Sort Time (ms) :\033[0m %f\n", gpuTotalTime);
+    printf("\033[1;34mGPU Sort Speed     :\033[0m %f million elements per second\n", meps);
+    if (gpuTotalTime < cpuTime) {
+        printf("\033[1;32mPERF PASSING\n\033[0m");
+        printf("\033[1;34mH2D Transfer Time (ms):\033[0m %f\n", h2dTime);
+        printf("\033[1;34mKernel Time (ms)      :\033[0m %f\n", gpuTime);
+        printf("\033[1;34mD2H Transfer Time (ms):\033[0m %f\n", d2hTime);
+    } else {
+        printf("\033[1;31mPERF FAILING\n\033[0m");
+        printf("\033[1;34mGPU Sort is \033[1;31m%dx \033[1;34mslower than CPU, optimize further!\n", speedup);
+        printf("\033[1;34mH2D Transfer Time (ms):\033[0m %f\n", h2dTime);
+        printf("\033[1;34mKernel Time (ms)      :\033[0m %f\n", gpuTime);
+        printf("\033[1;34mD2H Transfer Time (ms):\033[0m %f\n", d2hTime);
+        return 0;
+    }
+
+    return 0;
+}
