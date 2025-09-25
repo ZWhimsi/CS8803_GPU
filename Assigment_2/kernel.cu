@@ -194,7 +194,7 @@ cudaMemPrefetchAsync(d_arr, padded_size * sizeof(DTYPE), 0);
 // Perform bitonic sort on GPU
 // Strategy: run global-memory phases while partners cross 4*blockDim tiles.
 // Then run one batched shared-memory pass that completes remaining phases.
-int thread_per_block = 256;
+int thread_per_block = 128;
 int block_per_grid = (padded_size + thread_per_block - 1) / thread_per_block;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 int min_num_block = prop.multiProcessorCount * 32;
