@@ -40,16 +40,32 @@ __global__ void BitonicSort_global(DTYPE* __restrict__ data, int j, int k, int s
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
     const int stride = blockDim.x * gridDim.x;
 
-    #pragma unroll 4
-    for (int i = tid; i < size; i += stride) {
-        const int partner = i ^ j;
-        if (i < partner && partner < size) {
-            const bool ascending = ((i & k) == 0);
-            DTYPE a = data[i];
-            DTYPE b = data[partner];
-            if ((a > b) == ascending) {
-                data[i] = b;
-                data[partner] = a;
+    // Manually unroll by 2 to increase ILP and hide memory latency
+    for (int i = tid; i < size; i += (stride << 1)) {
+        // iteration 0
+        int idx0 = i;
+        int partner0 = idx0 ^ j;
+        if (idx0 < partner0 && partner0 < size) {
+            bool ascending0 = ((idx0 & k) == 0);
+            DTYPE a0 = data[idx0];
+            DTYPE b0 = data[partner0];
+            if ((a0 > b0) == ascending0) {
+                data[idx0] = b0;
+                data[partner0] = a0;
+            }
+        }
+        // iteration 1
+        int idx1 = i + stride;
+        if (idx1 < size) {
+            int partner1 = idx1 ^ j;
+            if (idx1 < partner1 && partner1 < size) {
+                bool ascending1 = ((idx1 & k) == 0);
+                DTYPE a1 = data[idx1];
+                DTYPE b1 = data[partner1];
+                if ((a1 > b1) == ascending1) {
+                    data[idx1] = b1;
+                    data[partner1] = a1;
+                }
             }
         }
     }
@@ -324,7 +340,7 @@ cudaStreamSynchronize(stream1);
 int threadsPerBlock = 1024;
 int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
-int minBlocks = prop.multiProcessorCount * 48;
+int minBlocks = prop.multiProcessorCount * 32;
 if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
