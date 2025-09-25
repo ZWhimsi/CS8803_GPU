@@ -39,7 +39,7 @@ __global__ void BitonicSort_global(DTYPE* __restrict__ data, int j, int k, int s
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
     const int stride = blockDim.x * gridDim.x;
 
-    #pragma unroll 8
+    #pragma unroll 4
     for (int i = tid; i < size; i += stride) {
         const int partner = i ^ j;
         if (i < partner && partner < size) {
@@ -322,8 +322,7 @@ cudaStreamSynchronize(stream1);
 int threadsPerBlock = 1024;
 int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
-int targetBlocksPerSM = 4; // aim for high residency without register pressure
-int minBlocks = prop.multiProcessorCount * targetBlocksPerSM * 8; // scale up
+int minBlocks = prop.multiProcessorCount * 32;
 if (blocksPerGrid < minBlocks) blocksPerGrid = minBlocks;
 
 size_t sharedMem4x = (size_t)threadsPerBlock * 4 * sizeof(DTYPE);
