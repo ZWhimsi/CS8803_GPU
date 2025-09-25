@@ -35,6 +35,7 @@ __global__ void PadWithMax(DTYPE* data, int start, int size) {
 // Global-memory phase of bitonic sort.
 // Grid-stride loop helps hide memory latency.
 __launch_bounds__(1024, 2)
+__launch_bounds__(512, 2)
 __global__ void BitonicSort_global(DTYPE* __restrict__ data, int j, int k, int size) {
     const int tid = blockDim.x * blockIdx.x + threadIdx.x;
     const int stride = blockDim.x * gridDim.x;
@@ -319,7 +320,7 @@ cudaStreamSynchronize(stream1);
 // Perform bitonic sort on GPU
 // Strategy: run global-memory phases while partners cross 4*blockDim tiles.
 // Then run one batched shared-memory pass that completes remaining phases.
-int threadsPerBlock = 1024;
+int threadsPerBlock = 512;
 int blocksPerGrid = (paddedSize + threadsPerBlock - 1) / threadsPerBlock;
 cudaDeviceProp prop; cudaGetDeviceProperties(&prop, 0);
 int minBlocks = prop.multiProcessorCount * 32;
