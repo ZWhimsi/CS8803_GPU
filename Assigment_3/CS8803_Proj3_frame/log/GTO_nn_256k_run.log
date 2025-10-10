@@ -1,0 +1,113 @@
+Reading GPU Configurations...
+Block Scheduling Policy: ROUND_ROBIN
+Warp Scheduling Policy: GTO
+trace type : nvbit
+> trace_path: /storage/ice-shared/cs8803o21/macsim_traces/nn/256k/Kernel0/trace.txt truncate_size: 0
+ trace type : nvbit
+# of blocks: 1024, # of warps: 8192, # of Instrs: 245760
+Macsim started @ Fri Oct 10 12:36:39 2025
+
+**************************************************
+========== starting kernel 0 ==========
+RAM resp id:0 m_cycle=240 req_time=37 resp_time=203 total_latency=203
+RAM resp id:1000 m_cycle=7029 req_time=6826 resp_time=203 total_latency=172685
+RAM resp id:2000 m_cycle=12617 req_time=12414 resp_time=203 total_latency=309948
+RAM resp id:3000 m_cycle=18121 req_time=0 resp_time=0 total_latency=444558
+RAM resp id:4000 m_cycle=23666 req_time=23463 resp_time=203 total_latency=579574
+RAM resp id:5000 m_cycle=29536 req_time=0 resp_time=0 total_latency=713643
+RAM resp id:6000 m_cycle=35796 req_time=0 resp_time=0 total_latency=853452
+RAM resp id:7000 m_cycle=42145 req_time=0 resp_time=0 total_latency=993581
+RAM resp id:8000 m_cycle=48474 req_time=48271 resp_time=203 total_latency=1132504
+RAM resp id:9000 m_cycle=54921 req_time=54718 resp_time=203 total_latency=1274287
+RAM resp id:10000 m_cycle=61449 req_time=0 resp_time=0 total_latency=1414015
+RAM resp id:11000 m_cycle=67821 req_time=0 resp_time=0 total_latency=1555337
+RAM resp id:12000 m_cycle=74274 req_time=74071 resp_time=203 total_latency=1695635
+RAM resp id:13000 m_cycle=80905 req_time=80701 resp_time=204 total_latency=1836561
+RAM resp id:14000 m_cycle=87409 req_time=0 resp_time=0 total_latency=1979395
+RAM resp id:15000 m_cycle=93804 req_time=0 resp_time=0 total_latency=2119976
+[Cycle: 100000]: mem_requests: 15983, mem_responses: 15957, avg_latency: 141
+RAM resp id:16000 m_cycle=100328 req_time=100125 resp_time=203 total_latency=2261172
+RAM resp id:17000 m_cycle=106737 req_time=0 resp_time=0 total_latency=2402414
+RAM resp id:18000 m_cycle=112958 req_time=112755 resp_time=203 total_latency=2541747
+core 1 retired
+core 4 retired
+core 6 retired
+core 3 retired
+core 2 retired
+core 0 retired
+core 5 retired
+core 7 retired
+========== kernel 0 summary ==========
+Core: 0
+	CORE0_TOT_CYCLES   : 116087
+	CORE0_STALL_CYCLES : 82741
+	CORE0_LD_INSTR     : 871
+	CORE0_ST_INSTR     : 729
+	CORE0_TOT_INSTR    : 116087
+Core: 1
+	CORE1_TOT_CYCLES   : 115506
+	CORE1_STALL_CYCLES : 82887
+	CORE1_LD_INSTR     : 873
+	CORE1_ST_INSTR     : 744
+	CORE1_TOT_INSTR    : 115506
+Core: 2
+	CORE2_TOT_CYCLES   : 115892
+	CORE2_STALL_CYCLES : 82293
+	CORE2_LD_INSTR     : 878
+	CORE2_ST_INSTR     : 727
+	CORE2_TOT_INSTR    : 115892
+Core: 3
+	CORE3_TOT_CYCLES   : 115658
+	CORE3_STALL_CYCLES : 82542
+	CORE3_LD_INSTR     : 871
+	CORE3_ST_INSTR     : 747
+	CORE3_TOT_INSTR    : 115658
+Core: 4
+	CORE4_TOT_CYCLES   : 115541
+	CORE4_STALL_CYCLES : 82459
+	CORE4_LD_INSTR     : 860
+	CORE4_ST_INSTR     : 724
+	CORE4_TOT_INSTR    : 115541
+Core: 5
+	CORE5_TOT_CYCLES   : 116219
+	CORE5_STALL_CYCLES : 82858
+	CORE5_LD_INSTR     : 876
+	CORE5_ST_INSTR     : 739
+	CORE5_TOT_INSTR    : 116219
+Core: 6
+	CORE6_TOT_CYCLES   : 115628
+	CORE6_STALL_CYCLES : 82040
+	CORE6_LD_INSTR     : 867
+	CORE6_ST_INSTR     : 727
+	CORE6_TOT_INSTR    : 115628
+Core: 7
+	CORE7_TOT_CYCLES   : 116222
+	CORE7_STALL_CYCLES : 82133
+	CORE7_LD_INSTR     : 872
+	CORE7_ST_INSTR     : 727
+	CORE7_TOT_INSTR    : 116222
+GPU Retired.
+**************************************************
+Simulation finished @ Fri Oct 10 12:36:41 2025
+
+Total simulation time: 0:0:2
+
+============= MacSim Stats =============
+Macsim:
+	NUM_CYCLES              : 116221
+	NUM_INSTRS_RETIRED      : 245760
+	NUM_STALL_CYCLES        : 659953
+	NUM_MEM_REQUESTS        : 18485
+	NUM_MEM_RESPONSES       : 18482
+	AVG_RESPONSE_LATENCY    : 141
+	NUM_TTIMEDOUT_REQUESTS  : 0
+	INSTR_PER_CYCLE         : 2.114592
+Cache:
+	CACHE_NUM_ACCESSES    : 37408
+	CACHE_NUM_HITS        : 14410
+	CACHE_HIT_RATE_PERC   : 38.52
+	MISSES_PER_1000_INSTR : 93.58
+
+========================================
+
+[END OF GPU SIMULATION]
