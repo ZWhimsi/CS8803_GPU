@@ -5,7 +5,7 @@ trace type : nvbit
 > trace_path: /storage/ice-shared/cs8803o21/macsim_traces/crystal/q12/Kernel0/trace.txt truncate_size: 0
  trace type : nvbit
 # of blocks: 1024, # of warps: 4096, # of Instrs: 868352
-Macsim started @ Fri Oct 10 12:36:26 2025
+Macsim started @ Fri Oct 10 13:00:19 2025
 
 **************************************************
 ========== starting kernel 0 ==========
@@ -139,9 +139,9 @@ Core: 7
 	CORE7_TOT_INSTR    : 512278
 GPU Retired.
 **************************************************
-Simulation finished @ Fri Oct 10 12:36:27 2025
+Simulation finished @ Fri Oct 10 13:00:26 2025
 
-Total simulation time: 0:0:1
+Total simulation time: 0:0:7
 
 ============= MacSim Stats =============
 Macsim:
