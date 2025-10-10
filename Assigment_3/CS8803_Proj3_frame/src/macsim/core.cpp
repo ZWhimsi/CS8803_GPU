@@ -90,25 +90,31 @@ void core_c::run_a_cycle(){
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Task 2.3: Decrement LLS scores by 1 point for all warps in the core
-  // Decrement LLS for currently running warp
-  if (c_running_warp != NULL) {
-    if (c_running_warp->ccws_lls_score > CCWS_LLS_BASE_SCORE) {
-      c_running_warp->ccws_lls_score--;
+  // Only decrement if CCWS policy is active
+  if (warp_scheduling_policy == Warp_Scheduling_Policy_Types::CCWS) {
+    // Decrement LLS for currently running warp (more aggressive decay)
+    if (c_running_warp != NULL) {
+      if (c_running_warp->ccws_lls_score > CCWS_LLS_BASE_SCORE) {
+        c_running_warp->ccws_lls_score -= 2; // Faster decay for running warp
+        if (c_running_warp->ccws_lls_score < CCWS_LLS_BASE_SCORE) {
+          c_running_warp->ccws_lls_score = CCWS_LLS_BASE_SCORE;
+        }
+      }
     }
-  }
-  
-  // Decrement LLS for active warps in dispatch queue
-  for (auto warp : c_dispatched_warps) {
-    if (warp->ccws_lls_score > CCWS_LLS_BASE_SCORE) {
-      warp->ccws_lls_score--;
+    
+    // Decrement LLS for active warps in dispatch queue
+    for (auto warp : c_dispatched_warps) {
+      if (warp->ccws_lls_score > CCWS_LLS_BASE_SCORE) {
+        warp->ccws_lls_score--;
+      }
     }
-  }
-  
-  // Decrement LLS for suspended warps
-  for (auto& suspended_pair : c_suspended_warps) {
-    warp_s* warp = suspended_pair.second;
-    if (warp->ccws_lls_score > CCWS_LLS_BASE_SCORE) {
-      warp->ccws_lls_score--;
+    
+    // Decrement LLS for suspended warps
+    for (auto& suspended_pair : c_suspended_warps) {
+      warp_s* warp = suspended_pair.second;
+      if (warp->ccws_lls_score > CCWS_LLS_BASE_SCORE) {
+        warp->ccws_lls_score--;
+      }
     }
   }
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -137,7 +143,12 @@ void core_c::run_a_cycle(){
 
   // Move currently executing warp to back of dispatch queue
   if (c_running_warp != NULL) {
-    c_dispatched_warps.push_back(c_running_warp);
+    // For GTO, insert at front to make it easier to find (greedy behavior)
+    if (warp_scheduling_policy == Warp_Scheduling_Policy_Types::GTO) {
+      c_dispatched_warps.insert(c_dispatched_warps.begin(), c_running_warp);
+    } else {
+      c_dispatched_warps.push_back(c_running_warp);
+    }
     c_running_warp = NULL;
   }
 
@@ -278,42 +289,37 @@ bool core_c::schedule_warps_rr() {
 
 bool core_c::schedule_warps_gto() {
   // GTO: Greedy Then Oldest scheduler
-  // First try to schedule the same warp again (greedy part)
-  if (c_running_warp != NULL) {
-    // Check if the running warp is still in dispatch queue
-    for (auto it = c_dispatched_warps.begin(); it != c_dispatched_warps.end(); ++it) {
-      if (*it == c_running_warp) {
-        // Found it! Schedule the same warp again (greedy)
-        c_dispatched_warps.erase(it);
-        // Update dispatch time for GTO tracking
-        c_running_warp->last_dispatch_cycle = c_cycle;
-        return false; // success, don't stall
-      }
+  
+  // If there are no warps, stall
+  if (c_dispatched_warps.empty()) {
+    return true;
+  }
+  
+  // Greedy part: if we just scheduled a warp and it's at the front, keep it
+  if (c_running_warp != NULL && !c_dispatched_warps.empty() && c_dispatched_warps.front() == c_running_warp) {
+    // Keep the same warp (greedy)
+    c_running_warp = c_dispatched_warps.front();
+    c_dispatched_warps.erase(c_dispatched_warps.begin());
+    return false;
+  }
+  
+  // Oldest part: find the warp that has been waiting longest
+  sim_time_type oldest_time = c_dispatched_warps[0]->last_dispatch_cycle;
+  int oldest_idx = 0;
+  
+  for (int i = 1; i < c_dispatched_warps.size(); i++) {
+    if (c_dispatched_warps[i]->last_dispatch_cycle < oldest_time) {
+      oldest_time = c_dispatched_warps[i]->last_dispatch_cycle;
+      oldest_idx = i;
     }
   }
   
-  // If no running warp or not in queue, find oldest warp (oldest part)
-  if (!c_dispatched_warps.empty()) {
-    // Find the warp that has been waiting longest (oldest dispatch time)
-    sim_time_type oldest_time = c_dispatched_warps[0]->last_dispatch_cycle;
-    int oldest_idx = 0;
-    
-    for (int i = 1; i < c_dispatched_warps.size(); i++) {
-      if (c_dispatched_warps[i]->last_dispatch_cycle < oldest_time) {
-        oldest_time = c_dispatched_warps[i]->last_dispatch_cycle;
-        oldest_idx = i;
-      }
-    }
-    
-    // Schedule the oldest warp
-    c_running_warp = c_dispatched_warps[oldest_idx];
-    c_dispatched_warps.erase(c_dispatched_warps.begin() + oldest_idx);
-    // Update dispatch time for GTO tracking
-    c_running_warp->last_dispatch_cycle = c_cycle;
-    return false; // success, don't stall
-  }
-  
-  return true; // no warps available, stall cycle
+  // Schedule the oldest warp
+  c_running_warp = c_dispatched_warps[oldest_idx];
+  c_dispatched_warps.erase(c_dispatched_warps.begin() + oldest_idx);
+  // Update dispatch time for GTO tracking
+  c_running_warp->last_dispatch_cycle = c_cycle;
+  return false;
 }
 
 
@@ -420,20 +426,20 @@ bool core_c::send_mem_req(int wid, trace_info_nvbit_small_s* trace_info, bool en
         // Increment VTA hits counter
         num_vta_hits++;
 
-        // Calculate LLDS using the formula
+        // Boost LLS score on VTA hit - immediate large boost
+        int old_score = c_running_warp->ccws_lls_score;
+        int boost = CCWS_LLS_K_THROTTLE * 10; // Large boost on VTA hit
+        int llds = old_score + boost;
+        
+        // Cap the LLS score to prevent overflow
         int num_active_warps = c_dispatched_warps.size();
-        int cum_lls_cutoff = num_active_warps * CCWS_LLS_BASE_SCORE;
-        int num_insts = inst_count_total;
-        if (num_insts == 0) num_insts = 1; // avoid division by zero
-        
-        int llds = (num_vta_hits * CCWS_LLS_K_THROTTLE * cum_lls_cutoff) / num_insts;
-        
-        // Ensure LLS doesn't go below base score
-        if (llds < CCWS_LLS_BASE_SCORE) {
-          llds = CCWS_LLS_BASE_SCORE;
+        if (num_active_warps == 0) num_active_warps = 1;
+        int max_score = num_active_warps * CCWS_LLS_BASE_SCORE * 4; // Allow up to 4x base score
+        if (llds > max_score) {
+          llds = max_score;
         }
         
-        CCWSLOG(printf("VTA hit! (core:%d, warp: 0x%x, score:%d -> %d)\n", core_id, c_running_warp->warp_id, c_running_warp->ccws_lls_score, llds);)
+        CCWSLOG(printf("VTA hit! (core:%d, warp: 0x%x, score:%d -> %d)\n", core_id, c_running_warp->warp_id, old_score, llds);)
         c_running_warp->ccws_lls_score = llds;
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -515,20 +521,20 @@ bool core_c::send_mem_req(int wid, trace_info_nvbit_small_s* trace_info, bool en
         // Increment VTA hits counter
         num_vta_hits++;
 
-        // Calculate LLDS using the formula
+        // Boost LLS score on VTA hit - immediate large boost
+        int old_score = c_running_warp->ccws_lls_score;
+        int boost = CCWS_LLS_K_THROTTLE * 10; // Large boost on VTA hit
+        int llds = old_score + boost;
+        
+        // Cap the LLS score to prevent overflow
         int num_active_warps = c_dispatched_warps.size();
-        int cum_lls_cutoff = num_active_warps * CCWS_LLS_BASE_SCORE;
-        int num_insts = inst_count_total;
-        if (num_insts == 0) num_insts = 1; // avoid division by zero
-        
-        int llds = (num_vta_hits * CCWS_LLS_K_THROTTLE * cum_lls_cutoff) / num_insts;
-        
-        // Ensure LLS doesn't go below base score
-        if (llds < CCWS_LLS_BASE_SCORE) {
-          llds = CCWS_LLS_BASE_SCORE;
+        if (num_active_warps == 0) num_active_warps = 1;
+        int max_score = num_active_warps * CCWS_LLS_BASE_SCORE * 4; // Allow up to 4x base score
+        if (llds > max_score) {
+          llds = max_score;
         }
         
-        CCWSLOG(printf("VTA hit! (core:%d, warp: 0x%x, score:%d -> %d)\n", core_id, c_running_warp->warp_id, c_running_warp->ccws_lls_score, llds);)
+        CCWSLOG(printf("VTA hit! (core:%d, warp: 0x%x, score:%d -> %d)\n", core_id, c_running_warp->warp_id, old_score, llds);)
         c_running_warp->ccws_lls_score = llds;
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
