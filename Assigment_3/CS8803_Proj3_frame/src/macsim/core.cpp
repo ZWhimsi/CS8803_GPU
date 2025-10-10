@@ -285,6 +285,8 @@ bool core_c::schedule_warps_gto() {
       if (*it == c_running_warp) {
         // Found it! Schedule the same warp again (greedy)
         c_dispatched_warps.erase(it);
+        // Update dispatch time for GTO tracking
+        c_running_warp->last_dispatch_cycle = c_cycle;
         return false; // success, don't stall
       }
     }
@@ -292,10 +294,10 @@ bool core_c::schedule_warps_gto() {
   
   // If no running warp or not in queue, find oldest warp (oldest part)
   if (!c_dispatched_warps.empty()) {
+    // Find the warp that has been waiting longest (oldest dispatch time)
     sim_time_type oldest_time = c_dispatched_warps[0]->last_dispatch_cycle;
     int oldest_idx = 0;
     
-    // Find warp with oldest dispatch time
     for (int i = 1; i < c_dispatched_warps.size(); i++) {
       if (c_dispatched_warps[i]->last_dispatch_cycle < oldest_time) {
         oldest_time = c_dispatched_warps[i]->last_dispatch_cycle;
@@ -306,6 +308,8 @@ bool core_c::schedule_warps_gto() {
     // Schedule the oldest warp
     c_running_warp = c_dispatched_warps[oldest_idx];
     c_dispatched_warps.erase(c_dispatched_warps.begin() + oldest_idx);
+    // Update dispatch time for GTO tracking
+    c_running_warp->last_dispatch_cycle = c_cycle;
     return false; // success, don't stall
   }
   
