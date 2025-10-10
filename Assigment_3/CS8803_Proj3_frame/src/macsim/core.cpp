@@ -91,7 +91,7 @@ void core_c::run_a_cycle(){
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Task 2.3: Decrement LLS scores by 1 point for all warps in the core
   // Only decrement if CCWS policy is active
-  if (warp_scheduling_policy == Warp_Scheduling_Policy_Types::CCWS) {
+  if (gpusim->warp_scheduling_policy == Warp_Scheduling_Policy_Types::CCWS) {
     // Decrement LLS for currently running warp (more aggressive decay)
     if (c_running_warp != NULL) {
       if (c_running_warp->ccws_lls_score > CCWS_LLS_BASE_SCORE) {
@@ -144,7 +144,7 @@ void core_c::run_a_cycle(){
   // Move currently executing warp to back of dispatch queue
   if (c_running_warp != NULL) {
     // For GTO, insert at front to make it easier to find (greedy behavior)
-    if (warp_scheduling_policy == Warp_Scheduling_Policy_Types::GTO) {
+    if (gpusim->warp_scheduling_policy == Warp_Scheduling_Policy_Types::GTO) {
       c_dispatched_warps.insert(c_dispatched_warps.begin(), c_running_warp);
     } else {
       c_dispatched_warps.push_back(c_running_warp);
