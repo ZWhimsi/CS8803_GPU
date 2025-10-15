@@ -221,6 +221,7 @@ void core_c::run_a_cycle(){
       WSLOG(printf("Warp finished: %x\n", c_running_warp->warp_id);)
       delete c_running_warp;
       c_running_warp = NULL;
+      c_last_scheduled_warp = NULL;  // Clear last scheduled warp when warp finishes
       return;
     }
   }
