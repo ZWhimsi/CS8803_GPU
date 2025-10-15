@@ -239,6 +239,7 @@ void core_c::run_a_cycle(){
       WSLOG(printf("Warp suspended: %x\n", c_running_warp->warp_id);)
       c_suspended_warps[c_running_warp->warp_id] = c_running_warp;
       c_running_warp = NULL;
+      c_last_scheduled_warp = NULL;  // Clear last scheduled warp when suspending
       return;
     } 
   }
