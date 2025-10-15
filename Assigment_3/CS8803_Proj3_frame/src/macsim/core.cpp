@@ -89,8 +89,23 @@ void core_c::run_a_cycle(){
   WSLOG(printf("-----------------------------------\n");)
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // TODO: Task 2.3: Decrement LLS scores by 1 point for all warps in the core (currently running, active warps, and 
+  // Task 2.3: Decrement LLS scores by 1 point for all warps in the core (currently running, active warps, and 
   // suspended warps)
+  
+  // Decrement LLS for currently running warp
+  if (c_running_warp != NULL) {
+    c_running_warp->ccws_lls_score = max(c_running_warp->ccws_lls_score - 1, CCWS_LLS_BASE_SCORE);
+  }
+  
+  // Decrement LLS for all active warps in dispatch queue
+  for (auto warp : c_dispatched_warps) {
+    warp->ccws_lls_score = max(warp->ccws_lls_score - 1, CCWS_LLS_BASE_SCORE);
+  }
+  
+  // Decrement LLS for all suspended warps
+  for (auto& pair : c_suspended_warps) {
+    pair.second->ccws_lls_score = max(pair.second->ccws_lls_score - 1, CCWS_LLS_BASE_SCORE);
+  }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -263,9 +278,40 @@ bool core_c::schedule_warps_gto() {
     GTO logic goes here
   */  
 
-  printf("ERROR: GTO Not Implemented\n");   // TODO: remove this
-  c_retire = true;                          // TODO: remove this
-  return true;
+  // If there are no available warps to run, skip the cycle
+  if (c_dispatched_warps.empty()) {
+    return true;
+  }
+
+  // Check if last scheduled warp is still in dispatch queue (greedy behavior)
+  if (c_last_scheduled_warp != NULL) {
+    for (auto it = c_dispatched_warps.begin(); it != c_dispatched_warps.end(); ++it) {
+      if (*it == c_last_scheduled_warp) {
+        // Found last scheduled warp, schedule it again (greedy)
+        c_running_warp = *it;
+        c_dispatched_warps.erase(it);
+        return false;
+      }
+    }
+  }
+
+  // Last scheduled warp not found or not set, find oldest warp (oldest dispatch_time)
+  warp_s* oldest_warp = NULL;
+  auto oldest_it = c_dispatched_warps.begin();
+  
+  for (auto it = c_dispatched_warps.begin(); it != c_dispatched_warps.end(); ++it) {
+    if (oldest_warp == NULL || (*it)->dispatch_time < oldest_warp->dispatch_time) {
+      oldest_warp = *it;
+      oldest_it = it;
+    }
+  }
+
+  // Schedule the oldest warp
+  c_running_warp = oldest_warp;
+  c_last_scheduled_warp = oldest_warp;
+  c_dispatched_warps.erase(oldest_it);
+  
+  return false;
 }
 
 
@@ -276,11 +322,9 @@ bool core_c::schedule_warps_ccws() {
     CCWS logic goes here
   */  
 
-  printf("ERROR: CCWS Not Implemented\n");   // TODO: remove this
-  c_retire = true;                          // TODO: remove this
-
   // TODO: Task 2-4a: determine cumulative LLS cutoff 
-  int cumulative_lls_cutoff = 0; 
+  int num_active_warps = c_dispatched_warps.size();
+  int cumulative_lls_cutoff = num_active_warps * CCWS_LLS_BASE_SCORE; 
   
   if (!c_dispatched_warps.empty()) {
     // TODO: Task 2.4b: Construct schedulable warps set:
@@ -289,17 +333,58 @@ bool core_c::schedule_warps_ccws() {
     //   schedulable warps set.
 
     // Copy dispatch queue
+    std::vector<warp_s*> sorted_warps = c_dispatched_warps;
 
     // sort the vector by scores (descending order)
+    std::sort(sorted_warps.begin(), sorted_warps.end(), 
+              [](warp_s* a, warp_s* b) { return a->ccws_lls_score > b->ccws_lls_score; });
 
     // Construct set of scheduleable warps by adding warps till we hit the cumulative threshold
     std::vector<warp_s*> scheduleable_Warps;
+    int cumulative_score = 0;
+    
+    for (auto warp : sorted_warps) {
+      cumulative_score += warp->ccws_lls_score;
+      scheduleable_Warps.push_back(warp);
+      if (cumulative_score >= cumulative_lls_cutoff) {
+        break;
+      }
+    }
+    
+    // Ensure we have at least one schedulable warp
+    if (scheduleable_Warps.empty()) {
+      scheduleable_Warps.push_back(c_dispatched_warps[0]);
+    }
   
     assert(scheduleable_Warps.size() > 0);   // We should always have atleast one schedulable warp
 
     // TODO: Task 2.4c: Use Round Robin as baseline scheduling logic to schedule warps from the dispatch queue only if 
     // the warp is present in the scheduleable warps set
+    // Find first warp in dispatch queue that is also in schedulable set
+    for (auto it = c_dispatched_warps.begin(); it != c_dispatched_warps.end(); ++it) {
+      warp_s* candidate_warp = *it;
+      
+      // Check if this warp is in the schedulable set
+      bool is_schedulable = false;
+      for (auto sched_warp : scheduleable_Warps) {
+        if (sched_warp == candidate_warp) {
+          is_schedulable = true;
+          break;
+        }
+      }
+      
+      if (is_schedulable) {
+        // Schedule this warp
+        c_running_warp = candidate_warp;
+        c_dispatched_warps.erase(it);
+        return false;
+      }
+    }
 
+    // Fallback: if no schedulable warp found, schedule first available
+    c_running_warp = c_dispatched_warps.front();
+    c_dispatched_warps.erase(c_dispatched_warps.begin());
+    return false;
   }
 
   return true;
@@ -347,22 +432,29 @@ bool core_c::send_mem_req(int wid, trace_info_nvbit_small_s* trace_info, bool en
       CACHELOG(printf("L1 Read: Miss\n");)
 
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // TODO: Task 2.2a: Upon L1 Read miss, we need to check if the tag corresponding to the address is present in 
+      // Task 2.2a: Upon L1 Read miss, we need to check if the tag corresponding to the address is present in 
       // currently executing warp's VTA.
 
-      // Get tag from address (see if there is any method in cache class to help with this)
+      // Get tag from address using cache helper method
       Addr vta_ln_tag;
+      int vta_set;
+      c_l1cache->find_tag_and_set(addr, &vta_ln_tag, &vta_set);
 
       // Access the VTA using the tag
       CCWSLOG(printf("VTA Access: %0llx\n", vta_ln_tag);)
-      bool vta_hit = false;
+      bool vta_hit = c_running_warp->ccws_vta_entry->access(vta_ln_tag);
       if(vta_hit) { // VTA Hit
         // Increment VTA hits counter
+        num_vta_hits++;
 
-        // Update the VTA Score to LLDS
-        int llds = 0;
+        // Calculate cumulative LLS cutoff and LLDS score
+        int num_active_warps = c_dispatched_warps.size() + c_suspended_warps.size() + (c_running_warp ? 1 : 0);
+        int cum_lls_cutoff = num_active_warps * CCWS_LLS_BASE_SCORE;
+        int llds = (num_vta_hits * CCWS_LLS_K_THROTTLE * cum_lls_cutoff) / inst_count_total;
+        
+        // Update the VTA Score to LLDS (ensure minimum base score)
+        c_running_warp->ccws_lls_score = max(llds, CCWS_LLS_BASE_SCORE);
         CCWSLOG(printf("VTA hit! (core:%d, warp: 0x%x, score:%d -> %d)\n", core_id, c_running_warp->warp_id, c_running_warp->ccws_lls_score, llds);)
-        c_running_warp->ccws_lls_score = llds;
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -380,15 +472,18 @@ bool core_c::send_mem_req(int wid, trace_info_nvbit_small_s* trace_info, bool en
         cache_data_t* l1_ins_ln = (cache_data_t*)c_l1cache->insert_cache(addr, &line_addr, &repl_line_addr, 0, false);
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        // TODO: Task 2.1a: Insert the tag in warp's VTA entry upon L1 eviction.
+        // Task 2.1a: Insert the tag in warp's VTA entry upon L1 eviction.
         // Steps:
         //  - Get tag corresponding to the address. (see if any of the cache class methods can help with this)
         //  - The warp which issued the memory request is the currently executing warp, Insert the tag in warp's VTA entry
         if(repl_line_addr) {
-          // Get the tag from the address
-          Addr repl_ln_tag; 
+          // Get the tag from the evicted address using cache helper method
+          Addr repl_ln_tag;
+          int repl_set;
+          c_l1cache->find_tag_and_set(repl_line_addr, &repl_ln_tag, &repl_set);
           
-          // Insert tag in warp's VTA entry
+          // Insert tag in current warp's VTA entry
+          c_running_warp->ccws_vta_entry->insert(repl_ln_tag);
           CCWSLOG(printf("VTA insertion: %llx\n", repl_ln_tag));
         }
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -430,22 +525,29 @@ bool core_c::send_mem_req(int wid, trace_info_nvbit_small_s* trace_info, bool en
       // - Write through to L2
       CACHELOG(printf("L1 Write: Miss, don't care\n");)
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      // TODO: Task 2.2b: Upon L1 Read miss, we need to check if the tag corresponding to the address is present in 
+      // Task 2.2b: Upon L1 Write miss, we need to check if the tag corresponding to the address is present in 
       // currently executing warp's VTA.
 
-      // Get tag from address (see if there is any method in cache class to help with this)
+      // Get tag from address using cache helper method
       Addr vta_ln_tag;
+      int vta_set;
+      c_l1cache->find_tag_and_set(addr, &vta_ln_tag, &vta_set);
 
       // Access the VTA using the tag
       CCWSLOG(printf("VTA Access: %0llx\n", vta_ln_tag);)
-      bool vta_hit = false;
+      bool vta_hit = c_running_warp->ccws_vta_entry->access(vta_ln_tag);
       if(vta_hit) { // VTA Hit
         // Increment VTA hits counter
+        num_vta_hits++;
 
-        // Update the VTA Score to LLDS
-        int llds = 0;
+        // Calculate cumulative LLS cutoff and LLDS score
+        int num_active_warps = c_dispatched_warps.size() + c_suspended_warps.size() + (c_running_warp ? 1 : 0);
+        int cum_lls_cutoff = num_active_warps * CCWS_LLS_BASE_SCORE;
+        int llds = (num_vta_hits * CCWS_LLS_K_THROTTLE * cum_lls_cutoff) / inst_count_total;
+        
+        // Update the VTA Score to LLDS (ensure minimum base score)
+        c_running_warp->ccws_lls_score = max(llds, CCWS_LLS_BASE_SCORE);
         CCWSLOG(printf("VTA hit! (core:%d, warp: 0x%x, score:%d -> %d)\n", core_id, c_running_warp->warp_id, c_running_warp->ccws_lls_score, llds);)
-        c_running_warp->ccws_lls_score = llds;
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     }
