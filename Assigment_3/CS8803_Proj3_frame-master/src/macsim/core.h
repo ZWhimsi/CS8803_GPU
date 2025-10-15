@@ -85,6 +85,9 @@ private:
   // Pointer to currently running warp
   warp_s* c_running_warp = NULL;
 
+  // Pointer to last scheduled warp for GTO scheduling
+  warp_s* c_last_scheduled_warp = NULL;
+
   // Warp scheduler
   bool schedule_warps(Warp_Scheduling_Policy_Types policy);
 

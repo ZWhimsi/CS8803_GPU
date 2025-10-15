@@ -350,24 +350,23 @@ void macsim::get_mem_response() {
           core_pointers_v[entry->core_id]->c_l1cache->insert_cache(entry->addr, &line_addr, &victim_line_addr, 0, false);
 
           //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-          // Task 2.1b: Insert evicted L1 tag into VTA on memory response
+          // Task 2.1b: Insert the tag in warp's VTA entry upon L1 eviction.
+          // Steps:
+          //  - Get tag corresponding to the address. (see if any of the cache class methods can help with this)
+          //  - Search for the warp that issued the request in core's (entry->core_id) suspended queue and Insert 
+          //    the tag in warp's VTA entry
           if(victim_line_addr) {
-            // Get tag from the evicted line address
+            // Get the tag from the evicted address using cache helper method
             Addr repl_ln_tag;
             int repl_set;
             core_pointers_v[entry->core_id]->c_l1cache->find_tag_and_set(victim_line_addr, &repl_ln_tag, &repl_set);
 
-            // Find the warp in suspended queue that issued this request
-            warp_s* target_warp = nullptr;
-            for (auto& suspended_pair : core_pointers_v[entry->core_id]->c_suspended_warps) {
-              if (suspended_pair.second->warp_id == entry->warp_id) {
-                target_warp = suspended_pair.second;
-                break;
-              }
-            }
+            // Get the warp pointer from suspended queue of core (use core_id from entry->core_id)
+            core_c* target_core = core_pointers_v[entry->core_id];
+            warp_s* target_warp = target_core->c_suspended_warps[entry->warp_id];
 
-            // Insert evicted tag into the warp's VTA
-            if (target_warp) {
+            // Insert the tag into the warp's VTA
+            if (target_warp != NULL) {
               target_warp->ccws_vta_entry->insert(repl_ln_tag);
               CCWSLOG(printf("VTA insertion: %llx\n", repl_ln_tag));
             }
@@ -566,8 +565,8 @@ int macsim::dispatch_warps(int core_id, Block_Scheduling_Policy_Types policy){
       warp_to_run->trace_info_ptr = initialize_warp(warp_to_run->warp_id);
       m_block_schedule_info[block_id]->dispatched_thread_num++;
       
-      // Update dispatch timestamp for GTO scheduling
-      warp_to_run->trace_info_ptr->last_dispatch_cycle = m_cycle;
+      // Initialize dispatch timestamp for GTO scheduling
+      warp_to_run->trace_info_ptr->dispatch_time = m_cycle;
 
       // We need to initialize VTA entry for the warp (associativity for VTA is defined in macsim.h)
       warp_to_run->trace_info_ptr->ccws_vta_entry = new ccws_vta(CCWS_VTA_ASSOC);
