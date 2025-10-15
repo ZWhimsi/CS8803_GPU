@@ -135,6 +135,7 @@ void core_c::run_a_cycle(){
   if (c_running_warp != NULL) {
     c_dispatched_warps.push_back(c_running_warp);
     c_running_warp = NULL;
+    c_last_scheduled_warp = NULL;  // Clear last scheduled warp when moving back to queue
   }
 
   if (c_dispatched_warps.empty()) {
