@@ -135,7 +135,7 @@ void core_c::run_a_cycle(){
   if (c_running_warp != NULL) {
     c_dispatched_warps.push_back(c_running_warp);
     c_running_warp = NULL;
-    c_last_scheduled_warp = NULL;  // Clear last scheduled warp when moving back to queue
+    // Don't clear c_last_scheduled_warp here - keep it for next cycle
   }
 
   if (c_dispatched_warps.empty()) {
@@ -290,7 +290,6 @@ bool core_c::schedule_warps_gto() {
       if (*it == c_last_scheduled_warp) {
         // Found last scheduled warp, schedule it again (greedy)
         c_running_warp = *it;
-        c_last_scheduled_warp = *it;  // Keep tracking this warp
         c_dispatched_warps.erase(it);
         return false;
       }
