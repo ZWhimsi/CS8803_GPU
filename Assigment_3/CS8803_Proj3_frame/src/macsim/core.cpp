@@ -281,16 +281,16 @@ bool core_c::schedule_warps_gto() {
     GTO logic goes here
   */  
 
-  // If there are no available warps to run, skip the cycle
+  // No warps available, skip this cycle
   if (c_dispatched_warps.empty()) {
     return true;
   }
 
-  // Check if last scheduled warp is still in dispatch queue (greedy behavior)
+  // Try greedy first - check if last warp is still in queue
   if (c_last_scheduled_warp != NULL) {
     for (auto it = c_dispatched_warps.begin(); it != c_dispatched_warps.end(); ++it) {
       if (*it == c_last_scheduled_warp) {
-        // Found last scheduled warp, schedule it again (greedy)
+        // Found it, keep running same warp (greedy part)
         c_running_warp = *it;
         c_dispatched_warps.erase(it);
         return false;
@@ -298,7 +298,7 @@ bool core_c::schedule_warps_gto() {
     }
   }
 
-  // Last scheduled warp not found or not set, find oldest warp (oldest dispatch_time)
+  // Didn't find last warp, so pick oldest one instead
   warp_s* oldest_warp = NULL;
   auto oldest_it = c_dispatched_warps.begin();
   
@@ -309,7 +309,7 @@ bool core_c::schedule_warps_gto() {
     }
   }
 
-  // Schedule the oldest warp
+  // Schedule oldest and remember it for next time
   c_running_warp = oldest_warp;
   c_last_scheduled_warp = oldest_warp;
   c_dispatched_warps.erase(oldest_it);
@@ -335,14 +335,14 @@ bool core_c::schedule_warps_ccws() {
     // - Collect the the warps with highest LLS scores (until we reach the cumulative cutoff) to construct the 
     //   schedulable warps set.
 
-    // Copy dispatch queue
+    // Make a copy and sort by score (highest first)
     std::vector<warp_s*> sorted_warps = c_dispatched_warps;
 
-    // sort the vector by scores (descending order)
+    // Lambda to compare scores
     std::sort(sorted_warps.begin(), sorted_warps.end(), 
               [](warp_s* a, warp_s* b) { return a->ccws_lls_score > b->ccws_lls_score; });
 
-    // Construct set of scheduleable warps by adding warps till we hit the cumulative threshold
+    // Build schedulable set - add warps until we hit cutoff
     std::vector<warp_s*> scheduleable_Warps;
     int cumulative_score = 0;
     
@@ -350,11 +350,11 @@ bool core_c::schedule_warps_ccws() {
       cumulative_score += warp->ccws_lls_score;
       scheduleable_Warps.push_back(warp);
       if (cumulative_score >= cumulative_lls_cutoff) {
-        break;
+        break;  // Hit the cutoff
       }
     }
     
-    // Ensure we have at least one schedulable warp
+    // Safety check - make sure we have at least one warp
     if (scheduleable_Warps.empty()) {
       scheduleable_Warps.push_back(c_dispatched_warps[0]);
     }
@@ -363,11 +363,11 @@ bool core_c::schedule_warps_ccws() {
 
     // TODO: Task 2.4c: Use Round Robin as baseline scheduling logic to schedule warps from the dispatch queue only if 
     // the warp is present in the scheduleable warps set
-    // Find first warp in dispatch queue that is also in schedulable set
+    // Round robin through dispatch queue, but only pick warps in schedulable set
     for (auto it = c_dispatched_warps.begin(); it != c_dispatched_warps.end(); ++it) {
       warp_s* candidate_warp = *it;
       
-      // Check if this warp is in the schedulable set
+      // Is this warp in our schedulable set?
       bool is_schedulable = false;
       for (auto sched_warp : scheduleable_Warps) {
         if (sched_warp == candidate_warp) {
@@ -377,14 +377,14 @@ bool core_c::schedule_warps_ccws() {
       }
       
       if (is_schedulable) {
-        // Schedule this warp
+        // Found one, schedule it
         c_running_warp = candidate_warp;
         c_dispatched_warps.erase(it);
         return false;
       }
     }
 
-    // Fallback: if no schedulable warp found, schedule first available
+    // Shouldn't reach here, but just in case
     c_running_warp = c_dispatched_warps.front();
     c_dispatched_warps.erase(c_dispatched_warps.begin());
     return false;
