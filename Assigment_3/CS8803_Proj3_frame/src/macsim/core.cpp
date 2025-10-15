@@ -289,6 +289,7 @@ bool core_c::schedule_warps_gto() {
       if (*it == c_last_scheduled_warp) {
         // Found last scheduled warp, schedule it again (greedy)
         c_running_warp = *it;
+        c_last_scheduled_warp = *it;  // Keep tracking this warp
         c_dispatched_warps.erase(it);
         return false;
       }
