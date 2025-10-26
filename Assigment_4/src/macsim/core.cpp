@@ -237,6 +237,12 @@ void core_c::run_a_cycle(){
       stall_cycles++;
       return;
     }
+    
+    // Stall the warp for the full latency duration
+    stall_cycles += latency;
+    c_running_warp->trace_buffer.pop();
+    inst_count_total++;
+    return;
   }
   
   c_running_warp->trace_buffer.pop();
