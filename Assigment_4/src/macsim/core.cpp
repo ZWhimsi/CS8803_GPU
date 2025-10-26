@@ -295,12 +295,33 @@ bool core_c::schedule_warps(Warp_Scheduling_Policy_Types policy) {
 // Note: Dependency checking is skipped when a warp's trace_buffer is empty.
 
 bool core_c::schedule_warps_rr() { 
-  // simple round robin for now - disable dependency checking temporarily
-  if (!c_dispatched_warps.empty()) {
-    c_running_warp = c_dispatched_warps.front();
-    c_dispatched_warps.erase(c_dispatched_warps.begin());
-    return false;
+  if(c_dispatched_warps.empty()) {
+    return true;
   }
+  
+  // safety limit to prevent infinite loops
+  int max_attempts = c_dispatched_warps.size();
+  int attempts = 0;
+  
+  // find first warp without dependencies
+  for(int i = 0; i < c_dispatched_warps.size() && attempts < max_attempts; i++) {
+    c_running_warp = c_dispatched_warps[i];
+    attempts++;
+    
+    // skip if trace buffer empty
+    if(c_running_warp->trace_buffer.empty()) {
+      continue;
+    }
+    
+    // check dependencies
+    if(!check_dependency()) {
+      c_dispatched_warps.erase(c_dispatched_warps.begin() + i);
+      return false;
+    }
+  }
+  
+  // no warp without dependencies found
+  c_running_warp = NULL;
   return true;
 }
 
