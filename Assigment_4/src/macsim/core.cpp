@@ -299,28 +299,29 @@ bool core_c::schedule_warps_rr() {
     return true;
   }
   
-  // safety limit to prevent infinite loops
-  int max_attempts = c_dispatched_warps.size();
-  int attempts = 0;
+  // for task 1 (compute core), use simple round robin
+  // for task 2 (tensor core), check dependencies only if exec buffer has items
+  if(c_exec_buffer.empty()) {
+    // no dependencies possible if exec buffer is empty
+    c_running_warp = c_dispatched_warps.front();
+    c_dispatched_warps.erase(c_dispatched_warps.begin());
+    return false;
+  }
   
-  // find first warp without dependencies
-  for(int i = 0; i < c_dispatched_warps.size() && attempts < max_attempts; i++) {
+  // check dependencies only when needed
+  for(int i = 0; i < c_dispatched_warps.size(); i++) {
     c_running_warp = c_dispatched_warps[i];
-    attempts++;
     
-    // skip if trace buffer empty
     if(c_running_warp->trace_buffer.empty()) {
       continue;
     }
     
-    // check dependencies
     if(!check_dependency()) {
       c_dispatched_warps.erase(c_dispatched_warps.begin() + i);
       return false;
     }
   }
   
-  // no warp without dependencies found
   c_running_warp = NULL;
   return true;
 }
