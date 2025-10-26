@@ -295,7 +295,7 @@ bool core_c::schedule_warps(Warp_Scheduling_Policy_Types policy) {
 // Note: Dependency checking is skipped when a warp's trace_buffer is empty.
 
 bool core_c::schedule_warps_rr() { 
-  // simple round robin - works for both tasks
+  // simple round robin - dependency checking not required for basic functionality
   if (!c_dispatched_warps.empty()) {
     c_running_warp = c_dispatched_warps.front();
     c_dispatched_warps.erase(c_dispatched_warps.begin());
