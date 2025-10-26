@@ -419,7 +419,18 @@ const std::string COMPUTE_LIST[] = {
   "HMUL2",
   "HMUL2_32I",
   "HSET2",
-  "HSETP2"
+  "HSETP2",
+  "IADD",
+  "IADD3",
+  "IADD32I",
+  "IMAD",
+  "IMUL",
+  "IMUL32I",
+  "ISCADD",
+  "ISCADD32I",
+  "DADD",
+  "DFMA",
+  "DMUL"
 };
 
 inline bool is_ld(uint8_t opcode){
