@@ -227,7 +227,13 @@ void core_c::run_a_cycle(){
   // TODO: Task 1: Check if the instruction is a compute instruction and add it to the buffer if so.
   // If the buffer is full, stall the current running warp.
   
+  // debug: log opcodes to see what's being processed
+  if(c_cycle < 1000) { // only log first 1000 cycles
+    printf("Cycle %ld: opcode=%d (%s)\n", c_cycle, trace_info->m_opcode, GPU_NVBIT_OPCODE[trace_info->m_opcode].c_str());
+  }
+  
   if(is_compute(trace_info->m_opcode)) {
+    printf("COMPUTE INSTRUCTION: %s (opcode=%d)\n", GPU_NVBIT_OPCODE[trace_info->m_opcode].c_str(), trace_info->m_opcode);
     int latency = get_latency(trace_info->m_opcode, gpusim->tensor_latency);
     int completion_cycle = c_cycle + latency;
     int dest_reg = trace_info->m_dst[0];
