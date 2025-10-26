@@ -237,6 +237,11 @@ void core_c::run_a_cycle(){
       stall_cycles++;
       return;
     }
+    
+    // For tensor instructions with high latency, stall the warp for the full duration
+    if(latency > 1) {
+      stall_cycles += latency - 1;  // Stall for latency-1 additional cycles
+    }
   }
   
   c_running_warp->trace_buffer.pop();
