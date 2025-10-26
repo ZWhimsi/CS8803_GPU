@@ -435,13 +435,18 @@ inline bool is_using_shared_memory(uint8_t opcode){
   return (it != end(SHARED_MEM_LIST));
 }
 
-// TODO: Task 1 : check if the opcode belongs to compute list
+// check if opcode is compute instruction
 inline bool is_compute(uint8_t opcode){
-  return false;
+  auto it = find(begin(COMPUTE_LIST), end(COMPUTE_LIST), GPU_NVBIT_OPCODE[opcode]);
+  return (it != end(COMPUTE_LIST));
 }
 
-// TODO: Task 2 : set tensor_latency for tensor instructions and 1 for other compute instructions
+// return latency: tensor_latency for H* opcodes, 1 for others
 inline int get_latency(uint8_t opcode, int tensor_latency){
+  string opcode_str = GPU_NVBIT_OPCODE[opcode];
+  if(opcode_str[0] == 'H') {
+    return tensor_latency;
+  }
   return 1;
 }
 

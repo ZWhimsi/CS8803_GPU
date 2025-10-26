@@ -227,9 +227,13 @@ void core_c::run_a_cycle(){
   // TODO: Task 1: Check if the instruction is a compute instruction and add it to the buffer if so.
   // If the buffer is full, stall the current running warp.
   
-  if(/*compute ?*/) {
+  if(is_compute(trace_info->m_opcode)) {
+    int latency = get_latency(trace_info->m_opcode, gpusim->tensor_latency);
+    int completion_cycle = c_cycle + latency;
+    int dest_reg = trace_info->m_dst[0];
     
-    if(/*buffer full ?*/) {
+    bool buffer_full = add_insts_to_exec_buffer(completion_cycle, c_running_warp->warp_id, dest_reg);
+    if(buffer_full) {
       stall_cycles++;
       return;
     }
@@ -243,11 +247,30 @@ void core_c::run_a_cycle(){
 // If the execution buffer is full, return true.
 
 bool core_c::add_insts_to_exec_buffer(int completion_cycle, int warp_id, int dest_reg) {
+  if(c_exec_buffer.size() >= gpusim->execution_width) {
+    return true;
+  }
+  
+  ExecutionData exec_data;
+  exec_data.warp_id = warp_id;
+  exec_data.dest_reg = dest_reg;
+  exec_data.timestamp = completion_cycle;
+  c_exec_buffer.push_back(exec_data);
+  
+  return false;
 }
 
 // TODO: Task 1: Remove instructions from the execution buffer if their cycle timestamp is less than or equal to the current cycle.
 
 void core_c::remove_insts_in_exec_buffer(int current_cycle) {
+  auto it = c_exec_buffer.begin();
+  while(it != c_exec_buffer.end()) {
+    if(it->timestamp <= current_cycle) {
+      it = c_exec_buffer.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 bool core_c::schedule_warps(Warp_Scheduling_Policy_Types policy) {
@@ -272,12 +295,24 @@ bool core_c::schedule_warps(Warp_Scheduling_Policy_Types policy) {
 // Note: Dependency checking is skipped when a warp's trace_buffer is empty.
 
 bool core_c::schedule_warps_rr() { 
-  // If there are no available warps to run, skip the cycle
-  if (!c_dispatched_warps.empty()) {
-    c_running_warp = c_dispatched_warps.front();
-    c_dispatched_warps.erase(c_dispatched_warps.begin());
-    return false;
+  if(c_dispatched_warps.empty()) {
+    return true;
   }
+  
+  for(auto it = c_dispatched_warps.begin(); it != c_dispatched_warps.end(); ++it) {
+    c_running_warp = *it;
+    
+    if(c_running_warp->trace_buffer.empty()) {
+      continue;
+    }
+    
+    if(!check_dependency()) {
+      c_dispatched_warps.erase(it);
+      return false;
+    }
+  }
+  
+  c_running_warp = NULL;
   return true;
 }
 
@@ -286,7 +321,24 @@ bool core_c::schedule_warps_rr() {
 // The registers being compared should belong to the same warp.
 
 bool core_c::check_dependency() {
+  if(c_running_warp->trace_buffer.empty()) {
     return false;
+  }
+  
+  trace_info_nvbit_small_s* trace_info = c_running_warp->trace_buffer.front();
+  int warp_id = c_running_warp->warp_id;
+  
+  for(const auto& exec_data : c_exec_buffer) {
+    if(exec_data.warp_id == warp_id) {
+      for(int i = 0; i < trace_info->m_num_read_regs; i++) {
+        if(trace_info->m_src[i] == exec_data.dest_reg) {
+          return true;
+        }
+      }
+    }
+  }
+  
+  return false;
 }
 
 bool core_c::schedule_warps_gto() {

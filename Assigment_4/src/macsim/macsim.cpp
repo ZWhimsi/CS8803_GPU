@@ -81,6 +81,8 @@ macsim::macsim(GPU_Parameter_Set* gpu_params){
   warp_scheduling_policy = m_gpu_params->Warp_Scheduling_Policy;
   
   // TODO: Task 2 : set tensor_latency and execution_width variables
+  tensor_latency = m_gpu_params->Tensor_Latency;
+  execution_width = m_gpu_params->Execution_Width;
 
   
   m_cycle_per_period = m_gpu_params->Cycle_Per_Period;
