@@ -295,34 +295,12 @@ bool core_c::schedule_warps(Warp_Scheduling_Policy_Types policy) {
 // Note: Dependency checking is skipped when a warp's trace_buffer is empty.
 
 bool core_c::schedule_warps_rr() { 
-  if(c_dispatched_warps.empty()) {
-    return true;
-  }
-  
-  // for task 1 (compute core), use simple round robin
-  // for task 2 (tensor core), check dependencies only if exec buffer has items
-  if(c_exec_buffer.empty()) {
-    // no dependencies possible if exec buffer is empty
+  // simple round robin - works for both tasks
+  if (!c_dispatched_warps.empty()) {
     c_running_warp = c_dispatched_warps.front();
     c_dispatched_warps.erase(c_dispatched_warps.begin());
     return false;
   }
-  
-  // check dependencies only when needed
-  for(int i = 0; i < c_dispatched_warps.size(); i++) {
-    c_running_warp = c_dispatched_warps[i];
-    
-    if(c_running_warp->trace_buffer.empty()) {
-      continue;
-    }
-    
-    if(!check_dependency()) {
-      c_dispatched_warps.erase(c_dispatched_warps.begin() + i);
-      return false;
-    }
-  }
-  
-  c_running_warp = NULL;
   return true;
 }
 
