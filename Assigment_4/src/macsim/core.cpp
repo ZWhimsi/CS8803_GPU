@@ -229,7 +229,7 @@ void core_c::run_a_cycle(){
   
   if(is_compute(trace_info->m_opcode)) {
     int latency = get_latency(trace_info->m_opcode, gpusim->tensor_latency);
-    int completion_cycle = c_cycle + latency;
+    int completion_cycle = c_cycle + latency - 1;
     int dest_reg = trace_info->m_dst[0];
     
     bool buffer_full = add_insts_to_exec_buffer(completion_cycle, c_running_warp->warp_id, dest_reg);
