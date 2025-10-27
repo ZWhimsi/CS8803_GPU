@@ -265,14 +265,14 @@ bool core_c::add_insts_to_exec_buffer(int completion_cycle, int warp_id, int des
 // TODO: Task 1: Remove instructions from the execution buffer if their cycle timestamp is less than or equal to the current cycle.
 
 void core_c::remove_insts_in_exec_buffer(int current_cycle) {
-  // remove completed instructions
-  for (auto it = c_exec_buffer.begin(); it != c_exec_buffer.end(); ) {
-    if (it->timestamp <= current_cycle) {
-      it = c_exec_buffer.erase(it);
-    } else {
-      ++it;
-    }
-  }
+  // remove completed instructions - use erase-remove idiom for efficiency
+  c_exec_buffer.erase(
+    std::remove_if(c_exec_buffer.begin(), c_exec_buffer.end(),
+      [current_cycle](const ExecutionData& exec_data) {
+        return exec_data.timestamp <= current_cycle;
+      }),
+    c_exec_buffer.end()
+  );
 }
 
 bool core_c::schedule_warps(Warp_Scheduling_Policy_Types policy) {
@@ -338,8 +338,13 @@ bool core_c::check_dependency() {
     return false;
   }
   
+  // early exit if no executing instructions
+  if (c_exec_buffer.empty()) {
+    return false;
+  }
+  
   // check for conflicts with executing instructions
-  for (auto& exec_inst : c_exec_buffer) {
+  for (const auto& exec_inst : c_exec_buffer) {
     // only check same warp
     if (exec_inst.warp_id != c_running_warp->warp_id) {
       continue;
