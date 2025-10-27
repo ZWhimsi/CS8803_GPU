@@ -343,9 +343,12 @@ bool core_c::check_dependency() {
     return false;
   }
   
-  // check for conflicts with executing instructions
+  // for tensor instructions, be more lenient with dependency checking
+  string opcode_str = GPU_NVBIT_OPCODE[trace_info->m_opcode];
+  bool is_tensor_inst = (opcode_str[0] == 'H');
+  
+  // check for conflicts with executing instructions from same warp only
   for (const auto& exec_inst : c_exec_buffer) {
-    // only check same warp
     if (exec_inst.warp_id != c_running_warp->warp_id) {
       continue;
     }
@@ -354,6 +357,10 @@ bool core_c::check_dependency() {
     for (int i = 0; i < trace_info->m_num_read_regs; i++) {
       int src_reg = trace_info->m_src[i];
       if (exec_inst.dest_reg == src_reg) {
+        // for tensor instructions, only check if execution buffer is nearly full
+        if (is_tensor_inst && c_exec_buffer.size() < gpusim->execution_width - 1) {
+          continue; // allow some tensor instructions to proceed
+        }
         return true;
       }
     }
