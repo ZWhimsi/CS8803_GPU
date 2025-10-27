@@ -1,0 +1,26 @@
+warning: in the working copy of 'Assigment_4/src/macsim/core.cpp', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/Assigment_4/src/macsim/core.cpp b/Assigment_4/src/macsim/core.cpp[m
+[1mindex d43bd03..a593e22 100644[m
+[1m--- a/Assigment_4/src/macsim/core.cpp[m
+[1m+++ b/Assigment_4/src/macsim/core.cpp[m
+[36m@@ -247,7 +247,7 @@[m [mvoid core_c::run_a_cycle(){[m
+ // If the execution buffer is full, return true.[m
+ [m
+ bool core_c::add_insts_to_exec_buffer(int completion_cycle, int warp_id, int dest_reg) {[m
+[31m-  // check if buffer is full[m
+[32m+[m[32m  // check if buffer is full - execution_width allows that many instructions[m
+   if (c_exec_buffer.size() >= gpusim->execution_width) {[m
+     return true;[m
+   }[m
+[36m@@ -304,7 +304,10 @@[m [mbool core_c::schedule_warps_rr() {[m
+   [m
+   // try to find a warp without dependencies[m
+   for (auto it = c_dispatched_warps.begin(); it != c_dispatched_warps.end(); ++it) {[m
+[31m-    c_running_warp = *it;[m
+[32m+[m[32m    warp_s* candidate_warp = *it;[m
+[32m+[m[41m    [m
+[32m+[m[32m    // temporarily set running warp for dependency check[m
+[32m+[m[32m    c_running_warp = candidate_warp;[m
+     [m
+     // check for dependency[m
+     bool has_conflict = check_dependency();[m

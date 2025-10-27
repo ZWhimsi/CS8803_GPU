@@ -247,6 +247,9 @@ void core_c::run_a_cycle(){
 // If the execution buffer is full, return true.
 
 bool core_c::add_insts_to_exec_buffer(int completion_cycle, int warp_id, int dest_reg) {
+  // clean up completed instructions first
+  remove_insts_in_exec_buffer(c_cycle);
+  
   // check if buffer is full - execution_width allows that many instructions
   if (c_exec_buffer.size() >= gpusim->execution_width) {
     return true;
@@ -345,6 +348,9 @@ bool core_c::check_dependency() {
   if (!is_compute(trace_info->m_opcode)) {
     return false;
   }
+  
+  // clean up completed instructions first
+  remove_insts_in_exec_buffer(c_cycle);
   
   // early exit if no executing instructions
   if (c_exec_buffer.empty()) {
