@@ -333,6 +333,11 @@ bool core_c::check_dependency() {
   // get next instruction
   trace_info_nvbit_small_s* trace_info = c_running_warp->trace_buffer.front();
   
+  // only check dependencies for compute instructions
+  if (!is_compute(trace_info->m_opcode)) {
+    return false;
+  }
+  
   // check for conflicts with executing instructions
   for (auto& exec_inst : c_exec_buffer) {
     // only check same warp
