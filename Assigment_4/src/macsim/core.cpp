@@ -247,7 +247,7 @@ void core_c::run_a_cycle(){
 // If the execution buffer is full, return true.
 
 bool core_c::add_insts_to_exec_buffer(int completion_cycle, int warp_id, int dest_reg) {
-  // check if buffer is full
+  // check if buffer is full - execution_width allows that many instructions
   if (c_exec_buffer.size() >= gpusim->execution_width) {
     return true;
   }
@@ -304,7 +304,10 @@ bool core_c::schedule_warps_rr() {
   
   // try to find a warp without dependencies
   for (auto it = c_dispatched_warps.begin(); it != c_dispatched_warps.end(); ++it) {
-    c_running_warp = *it;
+    warp_s* candidate_warp = *it;
+    
+    // temporarily set running warp for dependency check
+    c_running_warp = candidate_warp;
     
     // check for dependency
     bool has_conflict = check_dependency();
