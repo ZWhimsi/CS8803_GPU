@@ -346,6 +346,9 @@ bool core_c::check_dependency() {
     return false;
   }
   
+  // clean up completed instructions first
+  remove_insts_in_exec_buffer(c_cycle);
+  
   // early exit if no executing instructions
   if (c_exec_buffer.empty()) {
     return false;
